@@ -1,0 +1,228 @@
+[gd_scene load_steps=24 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/station.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/cafe_table.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="4"]
+[ext_resource type="PackedScene" path="res://assets/models/room.glb" id="5"]
+[ext_resource type="PackedScene" path="res://assets/models/station_coffee.glb" id="6"]
+[ext_resource type="PackedScene" path="res://assets/models/station_oven.glb" id="7"]
+[ext_resource type="PackedScene" path="res://assets/models/station_griddle.glb" id="8"]
+[ext_resource type="PackedScene" path="res://assets/models/station_soup.glb" id="9"]
+[ext_resource type="PackedScene" path="res://assets/models/station_freezer.glb" id="10"]
+[ext_resource type="PackedScene" path="res://assets/models/table.glb" id="11"]
+[ext_resource type="PackedScene" path="res://assets/models/chair.glb" id="12"]
+[ext_resource type="PackedScene" path="res://assets/models/wall_clock.glb" id="13"]
+[ext_resource type="PackedScene" path="res://assets/models/shelf.glb" id="14"]
+[ext_resource type="PackedScene" path="res://assets/models/picture_frame.glb" id="15"]
+[ext_resource type="PackedScene" path="res://assets/models/menu_board.glb" id="16"]
+[ext_resource type="PackedScene" path="res://assets/models/plant_big.glb" id="17"]
+[ext_resource type="PackedScene" path="res://assets/models/plant_small.glb" id="18"]
+[ext_resource type="PackedScene" path="res://assets/models/rug.glb" id="19"]
+[ext_resource type="PackedScene" path="res://assets/models/tree.glb" id="20"]
+[ext_resource type="PackedScene" path="res://assets/models/bush.glb" id="21"]
+[ext_resource type="PackedScene" path="res://assets/models/flowers.glb" id="22"]
+
+[sub_resource type="Environment" id="Environment_cozy"]
+background_mode = 1
+background_color = Color(0.984314, 0.882353, 0.827451, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.964706, 0.886275, 0.933333, 1)
+ambient_light_energy = 0.66
+tonemap_mode = 0
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_cozy")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.848048, 0.449397, -0.280814, 0, 0.529919, 0.848048, 0.529919, -0.719186, 0.449397, 0, 8, 0)
+light_color = Color(1, 0.945098, 0.870588, 1)
+light_energy = 0.46
+
+[node name="Camera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.587785, 0.809017, 0, -0.809017, 0.587785, 0, 10.1936, 6.45609)
+keep_aspect = 0
+fov = 31.0
+current = true
+
+[node name="Cafe" parent="." instance=ExtResource("5")]
+
+[node name="Kitchen" type="Node3D" parent="."]
+
+[node name="Coffee" type="Node3D" parent="Kitchen"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.3, 0, -3.85)
+script = ExtResource("2")
+station_id = "coffee"
+dish_id = "latte"
+
+[node name="Model" parent="Kitchen/Coffee" instance=ExtResource("6")]
+
+[node name="Oven" type="Node3D" parent="Kitchen"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.15, 0, -3.85)
+script = ExtResource("2")
+station_id = "oven"
+dish_id = "cake"
+
+[node name="Model" parent="Kitchen/Oven" instance=ExtResource("7")]
+
+[node name="Griddle" type="Node3D" parent="Kitchen"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.85)
+script = ExtResource("2")
+station_id = "griddle"
+dish_id = "pancakes"
+
+[node name="Model" parent="Kitchen/Griddle" instance=ExtResource("8")]
+
+[node name="Soup" type="Node3D" parent="Kitchen"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.15, 0, -3.85)
+script = ExtResource("2")
+station_id = "soup"
+dish_id = "soup"
+
+[node name="Model" parent="Kitchen/Soup" instance=ExtResource("9")]
+
+[node name="Freezer" type="Node3D" parent="Kitchen"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.3, 0, -3.85)
+script = ExtResource("2")
+station_id = "freezer"
+dish_id = "sundae"
+
+[node name="Model" parent="Kitchen/Freezer" instance=ExtResource("10")]
+
+[node name="Dining" type="Node3D" parent="."]
+
+[node name="Table1" type="Node3D" parent="Dining"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.45, 0, -1.55)
+script = ExtResource("3")
+
+[node name="Model" parent="Dining/Table1" instance=ExtResource("11")]
+
+[node name="ChairL" parent="Dining/Table1" instance=ExtResource("12")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -0.75, 0, 0)
+
+[node name="ChairR" parent="Dining/Table1" instance=ExtResource("12")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0.75, 0, 0)
+
+[node name="Table2" type="Node3D" parent="Dining"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, -1.55)
+script = ExtResource("3")
+
+[node name="Model" parent="Dining/Table2" instance=ExtResource("11")]
+
+[node name="ChairL" parent="Dining/Table2" instance=ExtResource("12")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -0.75, 0, 0)
+
+[node name="ChairR" parent="Dining/Table2" instance=ExtResource("12")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0.75, 0, 0)
+
+[node name="Table3" type="Node3D" parent="Dining"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.45, 0, 1.05)
+script = ExtResource("3")
+
+[node name="Model" parent="Dining/Table3" instance=ExtResource("11")]
+
+[node name="ChairL" parent="Dining/Table3" instance=ExtResource("12")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -0.75, 0, 0)
+
+[node name="ChairR" parent="Dining/Table3" instance=ExtResource("12")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0.75, 0, 0)
+
+[node name="Table4" type="Node3D" parent="Dining"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.45, 0, 1.05)
+script = ExtResource("3")
+
+[node name="Model" parent="Dining/Table4" instance=ExtResource("11")]
+
+[node name="ChairL" parent="Dining/Table4" instance=ExtResource("12")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -0.75, 0, 0)
+
+[node name="ChairR" parent="Dining/Table4" instance=ExtResource("12")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0.75, 0, 0)
+
+[node name="Decor" type="Node3D" parent="."]
+
+[node name="WallClock" parent="Decor" instance=ExtResource("13")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.72, -4.19)
+
+[node name="Shelf" parent="Decor" instance=ExtResource("14")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.99, 1.5, -3.1)
+
+[node name="FrameLeft" parent="Decor" instance=ExtResource("15")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -2.99, 1.45, 0.4)
+
+[node name="FrameRight" parent="Decor" instance=ExtResource("15")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 2.99, 1.45, 0.1)
+
+[node name="MenuBoard" parent="Decor" instance=ExtResource("16") groups=["obstacle"]]
+transform = Transform3D(0.906308, 0, 0.422618, 0, 1, 0, -0.422618, 0, 0.906308, -2.45, 0, 2.15)
+
+[node name="Plants" type="Node3D" parent="Decor"]
+
+[node name="PlantLeft" parent="Decor/Plants" instance=ExtResource("17") groups=["obstacle"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.6, 0, -2.45)
+metadata/radius = 0.34
+
+[node name="PlantRight" parent="Decor/Plants" instance=ExtResource("17") groups=["obstacle"]]
+transform = Transform3D(0.766044, 0, 0.642788, 0, 1, 0, -0.642788, 0, 0.766044, 2.6, 0, -2.45)
+metadata/radius = 0.34
+
+[node name="SillBackLeft" parent="Decor/Plants" instance=ExtResource("18")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.72, 0.99, -4.13)
+
+[node name="SillBackRight" parent="Decor/Plants" instance=ExtResource("18")]
+transform = Transform3D(0.5, 0, 0.866025, 0, 1, 0, -0.866025, 0, 0.5, 1.72, 0.99, -4.13)
+
+[node name="SillLeft" parent="Decor/Plants" instance=ExtResource("18")]
+transform = Transform3D(0.866025, 0, 0.5, 0, 1, 0, -0.5, 0, 0.866025, -2.93, 0.99, -1.5)
+
+[node name="SillRight" parent="Decor/Plants" instance=ExtResource("18")]
+transform = Transform3D(0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, 2.93, 0.99, -1.5)
+
+[node name="Rug" parent="Decor" instance=ExtResource("19")]
+transform = Transform3D(2.45, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, -0.25)
+
+[node name="Outside" type="Node3D" parent="."]
+
+[node name="Tree1" parent="Outside" instance=ExtResource("20")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.3, 0, -3.4)
+
+[node name="Tree2" parent="Outside" instance=ExtResource("20")]
+transform = Transform3D(0.393323, 0, 1.08065, 0, 1.15, 0, -1.08065, 0, 0.393323, 4.4, 0, -4)
+
+[node name="Tree3" parent="Outside" instance=ExtResource("20")]
+transform = Transform3D(0.892708, 0, 0.324919, 0, 0.95, 0, -0.324919, 0, 0.892708, -4.4, 0, 4)
+
+[node name="Tree4" parent="Outside" instance=ExtResource("20")]
+transform = Transform3D(-0.804347, 0, 0.674927, 0, 1.05, 0, -0.674927, 0, -0.804347, 4.5, 0, 4.4)
+
+[node name="Bush5" parent="Outside" instance=ExtResource("21")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.9, 0, 0.9)
+
+[node name="Bush6" parent="Outside" instance=ExtResource("21")]
+transform = Transform3D(0, 0, 1.1, 0, 1.1, 0, -1.1, 0, 0, 3.9, 0, -0.9)
+
+[node name="Bush7" parent="Outside" instance=ExtResource("21")]
+transform = Transform3D(0.779423, 0, 0.45, 0, 0.9, 0, -0.45, 0, 0.779423, -2.2, 0, 3.7)
+
+[node name="Bush8" parent="Outside" instance=ExtResource("21")]
+transform = Transform3D(-0.939693, 0, -0.34202, 0, 1, 0, 0.34202, 0, -0.939693, 2.2, 0, 3.6)
+
+[node name="Flowers9" parent="Outside" instance=ExtResource("22")]
+transform = Transform3D(1.2, 0, 0, 0, 1.2, 0, 0, 0, 1.2, -0.9, 0, 3.5)
+
+[node name="Flowers10" parent="Outside" instance=ExtResource("22")]
+transform = Transform3D(0, 0, 1.2, 0, 1.2, 0, -1.2, 0, 0, 0.8, 0, 4.1)
+
+[node name="Flowers11" parent="Outside" instance=ExtResource("22")]
+transform = Transform3D(0.952628, 0, 0.55, 0, 1.1, 0, -0.55, 0, 0.952628, 3.8, 0, 3.2)
+
+[node name="Flowers12" parent="Outside" instance=ExtResource("22")]
+transform = Transform3D(0.55, 0, 0.952628, 0, 1.1, 0, -0.952628, 0, 0.55, -3.8, 0, -1.4)
+
+[node name="Actors" type="Node3D" parent="."]
+
+[node name="Hud" type="CanvasLayer" parent="."]
+script = ExtResource("4")
