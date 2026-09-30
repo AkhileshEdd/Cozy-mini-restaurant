@@ -19,6 +19,11 @@ const SPECS := {
 	"tray": {"model": "tray", "pitch": 50.0},
 	"lights": {"model": "lamp_pendant", "pitch": 10.0, "center": Vector3(0, 0.05, 0), "radius": 0.3},
 	"heart": {"model": "emote_heart", "pitch": 0.0},
+	"bunny": {"model": "cust_bunny", "pitch": 8.0, "center": Vector3(0, 0.72, 0), "radius": 0.52},
+	"bear": {"model": "cust_bear", "pitch": 8.0, "center": Vector3(0, 0.66, 0), "radius": 0.46},
+	"frog": {"model": "cust_frog", "pitch": 8.0, "center": Vector3(0, 0.66, 0), "radius": 0.46},
+	"chick": {"model": "cust_chick", "pitch": 8.0, "center": Vector3(0, 0.66, 0), "radius": 0.46},
+	"panda": {"model": "cust_panda", "pitch": 8.0, "center": Vector3(0, 0.66, 0), "radius": 0.46},
 }
 
 static var icons: Dictionary = {}

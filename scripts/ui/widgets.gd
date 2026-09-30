@@ -1,6 +1,52 @@
 class_name Widgets
 extends RefCounted
-## Small custom-drawn UI pieces: stars, pause glyph, speaker glyph.
+## Small custom-drawn UI pieces: stars, hearts, pause and book glyphs.
+
+
+class HeartRow extends Control:
+	var value := 0.0
+	var count := 5
+	var heart_size := 30.0
+	var filled := Color("f48fa0")
+	var edge := Color("e07a8c")
+	var empty := Color("f3e6d8")
+
+	func _init(size_px := 30.0, n := 5) -> void:
+		heart_size = size_px
+		count = n
+		custom_minimum_size = Vector2(size_px * n + (n - 1) * size_px * 0.2, size_px)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func set_value(v: float) -> void:
+		value = v
+		queue_redraw()
+
+	func _draw() -> void:
+		for i in count:
+			var c := Vector2(heart_size * 0.5 + i * heart_size * 1.2, heart_size * 0.5)
+			var pts := _heart(c, heart_size * 0.5)
+			var fill := clampf(value - i, 0.0, 1.0)
+			draw_colored_polygon(pts, empty)
+			if fill >= 0.99:
+				draw_colored_polygon(pts, filled)
+			elif fill > 0.01:
+				var clip := PackedVector2Array()
+				var edge_y := c.y + heart_size * 0.5 - heart_size * fill
+				for p in pts:
+					clip.append(Vector2(p.x, maxf(p.y, edge_y)))
+				draw_colored_polygon(clip, filled)
+			var outline := pts.duplicate()
+			outline.append(pts[0])
+			draw_polyline(outline, edge if fill > 0.01 else Color("e6d6c4"), 2.0, true)
+
+	func _heart(c: Vector2, r: float) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for k in 32:
+			var t := TAU * k / 32.0
+			var x := 16.0 * pow(sin(t), 3)
+			var y := 13.0 * cos(t) - 5.0 * cos(2 * t) - 2.0 * cos(3 * t) - cos(4 * t)
+			pts.append(c + Vector2(x, -y - 2.0) * (r / 17.0))
+		return pts
 
 
 class StarRow extends Control:
@@ -61,6 +107,14 @@ class Glyph extends Control:
 	func _draw() -> void:
 		var s := size
 		match kind:
+			"book":
+				var w := s.x * 0.1
+				var l := PackedVector2Array([Vector2(s.x * 0.5, s.y * 0.28), Vector2(s.x * 0.12, s.y * 0.2), Vector2(s.x * 0.12, s.y * 0.78), Vector2(s.x * 0.5, s.y * 0.86)])
+				var r := PackedVector2Array([Vector2(s.x * 0.5, s.y * 0.28), Vector2(s.x * 0.88, s.y * 0.2), Vector2(s.x * 0.88, s.y * 0.78), Vector2(s.x * 0.5, s.y * 0.86)])
+				l.append(l[0])
+				r.append(r[0])
+				draw_polyline(l, color, w, true)
+				draw_polyline(r, color, w, true)
 			"pause":
 				var w := s.x * 0.16
 				draw_line(Vector2(s.x * 0.32, s.y * 0.2), Vector2(s.x * 0.32, s.y * 0.8), color, w, true)

@@ -51,6 +51,29 @@ func _ready() -> void:
 
 	_check(GameState.xp > 0, "earned café XP (xp=%d, level %d)" % [GameState.xp, GameState.cafe_level()])
 	_check(GameState.make_order("bear").size() == 2, "Bruno always orders two dishes")
+	var friend_points := 0
+	for kind in GameState.GUESTS:
+		friend_points += int(GameState.friend(kind)["points"])
+	_check(friend_points > 0, "regulars gained friendship (%d points)" % friend_points)
+	_check(not GameState.dish_counts.is_empty(), "served dishes are counted for the book")
+	_check(GameState.stickers.has("first_guest"), "Grand opening sticker unlocked")
+	for tab in ["regulars", "menu", "stickers"]:
+		main.hud.open_book(tab)
+		await get_tree().process_frame
+		await _shot("55_book_" + tab)
+	_check(main.hud.is_book_open(), "collection book opens")
+	main.hud.close_book()
+	# friendship gifts and heart maths
+	var coins_before := GameState.coins
+	GameState.friend("frog")["points"] = 0
+	GameState.record_visit("frog", 5.0, ["soup"], false)
+	_check(GameState.hearts("frog") == 1 and GameState.coins > coins_before, "first heart pays a gift")
+	# save / load keeps the new progress
+	GameState.save_game()
+	var saved_stickers := GameState.stickers.size()
+	GameState.stickers = []
+	GameState.load_game()
+	_check(GameState.stickers.size() == saved_stickers and GameState.hearts("frog") == 1, "stickers and hearts survive save/load")
 	var sweet := GameState.make_order("bunny")
 	_check(sweet.size() >= 1 and not sweet.has("latte"), "Pip only orders desserts")
 

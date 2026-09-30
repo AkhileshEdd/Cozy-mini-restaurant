@@ -4,6 +4,8 @@ extends Node
 signal coins_changed(coins: int)
 signal upgrades_changed
 signal leveled_up(level: int)
+signal friendship_up(kind: String, hearts: int, gift: int)
+signal sticker_unlocked(id: String)
 
 const SAVE_PATH := "user://cozy_save.json"
 const SAVE_VERSION := 1
@@ -47,11 +49,11 @@ const UPGRADES := [
 ##   patience / tip: multipliers   items: dishes per order   likes: allowed dishes
 ##   fancy: orders the priciest dish on the menu   critic: stars and XP count double
 const GUESTS := {
-	"bunny": {"name": "Pip", "trait": "Sweet tooth", "desc": "Only orders desserts", "patience": 1.0, "tip": 1.15, "likes": ["cake", "pancakes", "sundae"]},
-	"bear": {"name": "Bruno", "trait": "Big appetite", "desc": "Always orders two dishes", "patience": 1.35, "tip": 1.0, "items": 2},
-	"frog": {"name": "Lily", "trait": "Easygoing", "desc": "Waits a long time but tips a little less", "patience": 1.45, "tip": 0.8},
-	"chick": {"name": "Sunny", "trait": "In a hurry", "desc": "Short on patience, big on tips", "patience": 0.65, "tip": 1.7},
-	"panda": {"name": "Bao", "trait": "Food critic", "desc": "Orders the fanciest dish. His stars count double", "patience": 1.0, "tip": 1.3, "fancy": true, "critic": true},
+	"bunny": {"fav": "cake", "name": "Pip", "trait": "Sweet tooth", "desc": "Only orders desserts", "patience": 1.0, "tip": 1.15, "likes": ["cake", "pancakes", "sundae"]},
+	"bear": {"fav": "pancakes", "name": "Bruno", "trait": "Big appetite", "desc": "Always orders two dishes", "patience": 1.35, "tip": 1.0, "items": 2},
+	"frog": {"fav": "soup", "name": "Lily", "trait": "Easygoing", "desc": "Waits a long time but tips a little less", "patience": 1.45, "tip": 0.8},
+	"chick": {"fav": "latte", "name": "Sunny", "trait": "In a hurry", "desc": "Short on patience, big on tips", "patience": 0.65, "tip": 1.7},
+	"panda": {"fav": "sundae", "name": "Bao", "trait": "Food critic", "desc": "Orders the fanciest dish. His stars count double", "patience": 1.0, "tip": 1.3, "fancy": true, "critic": true},
 }
 
 ## Café levels: XP comes from happy guests (their stars). Each level has a name.
@@ -64,6 +66,28 @@ const LEVELS := [
 	{"xp": 530, "title": "Famous Café"},
 	{"xp": 800, "title": "Legendary Bistro"},
 ]
+## Friendship points needed for each heart (five hearts in total).
+const HEARTS := [3, 8, 15, 25, 40]
+## Hearts perks: at 3 hearts a regular tips 10% more, at 5 they wait 20% longer.
+const TIP_HEART := 3
+const PATIENCE_HEART := 5
+
+## Stickers (achievements) for the collection book. `reward` is paid on unlock.
+const STICKERS := [
+	{"id": "first_guest", "name": "Grand opening", "desc": "Serve your first guest", "icon": "heart", "reward": 10},
+	{"id": "guests_50", "name": "Busy bee", "desc": "Serve 50 guests", "icon": "latte", "reward": 80},
+	{"id": "guests_200", "name": "Café celebrity", "desc": "Serve 200 guests", "icon": "cake", "reward": 200},
+	{"id": "combos_10", "name": "Combo king", "desc": "Finish 10 combo orders", "icon": "pancakes", "reward": 100},
+	{"id": "perfect_day", "name": "Perfect day", "desc": "Serve 5+ guests in a day with nobody grumpy", "icon": "heart", "reward": 50},
+	{"id": "all_dishes", "name": "Full menu", "desc": "Serve every dish at least once", "icon": "sundae", "reward": 150},
+	{"id": "critic", "name": "Critic's choice", "desc": "Get 5 stars from Bao the food critic", "icon": "soup", "reward": 60},
+	{"id": "good_friends", "name": "Good friends", "desc": "Reach 3 hearts with a regular", "icon": "heart", "reward": 40},
+	{"id": "all_friends", "name": "Everyone's friend", "desc": "Reach 2 hearts with every regular", "icon": "heart", "reward": 120},
+	{"id": "best_friends", "name": "Best friends", "desc": "Reach 5 hearts with a regular", "icon": "heart", "reward": 150},
+	{"id": "level_4", "name": "Sweet Spot", "desc": "Reach café level 4", "icon": "cook", "reward": 100},
+	{"id": "coins_1000", "name": "Piggy bank", "desc": "Earn 1000 coins in total", "icon": "coin", "reward": 100},
+]
+
 ## Combo (two-dish) orders start at this café level.
 const COMBO_LEVEL := 2
 const COMBO_BONUS := 1.3
@@ -74,6 +98,15 @@ var upgrades: Dictionary = {}
 var total_served := 0
 var rating := 4.0
 var xp := 0
+## kind -> {"points", "visits"}
+var friends: Dictionary = {}
+## dish -> times served
+var dish_counts: Dictionary = {}
+var stickers: Array[String] = []
+var combos_total := 0
+var coins_total := 0
+var perfect_days := 0
+var critic_five := false
 var sound_on := true
 var music_on := true
 
@@ -130,6 +163,8 @@ func buy(id: String) -> bool:
 
 func add_coins(amount: int) -> void:
 	coins += amount
+	if amount > 0:
+		coins_total += amount
 	coins_changed.emit(coins)
 
 
@@ -209,6 +244,9 @@ func make_order(kind: String) -> Array[String]:
 	if g.get("fancy", false):
 		pool.sort_custom(func(a: String, b: String): return dish_price(a) > dish_price(b))
 		pool = pool.slice(0, 2)
+	var fav: String = g.get("fav", "")
+	if pool.has(fav) and randf() < 0.35:
+		pool = [fav]
 	var count := int(g.get("items", 1))
 	if count == 1 and cafe_level() >= COMBO_LEVEL and randf() < 0.25:
 		count = 2
@@ -219,6 +257,120 @@ func make_order(kind: String) -> Array[String]:
 			choices = pool
 		out.append(choices.pick_random())
 	return out
+
+
+# -- friendship --------------------------------------------------------------------
+
+func friend(kind: String) -> Dictionary:
+	if not friends.has(kind):
+		friends[kind] = {"points": 0, "visits": 0}
+	return friends[kind]
+
+
+func hearts(kind: String) -> int:
+	var pts := int(friend(kind)["points"])
+	var h := 0
+	for need in HEARTS:
+		if pts >= int(need):
+			h += 1
+	return h
+
+
+## 0..1 progress towards the next heart.
+func heart_progress(kind: String) -> float:
+	var h := hearts(kind)
+	if h >= HEARTS.size():
+		return 1.0
+	var lo := 0 if h == 0 else int(HEARTS[h - 1])
+	var hi := int(HEARTS[h])
+	return clampf(float(int(friend(kind)["points"]) - lo) / float(hi - lo), 0.0, 1.0)
+
+
+## Coins a regular gives when you reach a heart.
+func heart_gift(heart: int) -> int:
+	return 10 * heart
+
+
+func friend_patience(kind: String) -> float:
+	return 1.2 if hearts(kind) >= PATIENCE_HEART else 1.0
+
+
+func friend_tip(kind: String) -> float:
+	return 1.1 if hearts(kind) >= TIP_HEART else 1.0
+
+
+## Records a finished visit and returns friendship points gained.
+func record_visit(kind: String, stars: float, served: Array, combo: bool) -> int:
+	var f := friend(kind)
+	f["visits"] = int(f["visits"]) + 1
+	for dish in served:
+		dish_counts[dish] = int(dish_counts.get(dish, 0)) + 1
+	if stars < 3.0:
+		check_stickers()
+		return 0
+	if combo:
+		combos_total += 1
+	if kind == "panda" and stars >= 5.0:
+		critic_five = true
+	var gained := 2 if stars >= 4.5 else 1
+	if served.has(guest(kind).get("fav", "")):
+		gained += 1
+	var before := hearts(kind)
+	f["points"] = int(f["points"]) + gained
+	for h in range(before + 1, hearts(kind) + 1):
+		var gift := heart_gift(h)
+		add_coins(gift)
+		friendship_up.emit(kind, h, gift)
+	check_stickers()
+	return gained
+
+
+# -- stickers ----------------------------------------------------------------------
+
+func sticker_def(id: String) -> Dictionary:
+	for st in STICKERS:
+		if st["id"] == id:
+			return st
+	return {}
+
+
+## [current, target] progress for a sticker.
+func sticker_progress(id: String) -> Array:
+	var best_hearts := 0
+	var min_hearts := 99
+	for kind in GUESTS:
+		best_hearts = maxi(best_hearts, hearts(kind))
+		min_hearts = mini(min_hearts, hearts(kind))
+	match id:
+		"first_guest": return [mini(total_served, 1), 1]
+		"guests_50": return [mini(total_served, 50), 50]
+		"guests_200": return [mini(total_served, 200), 200]
+		"combos_10": return [mini(combos_total, 10), 10]
+		"perfect_day": return [mini(perfect_days, 1), 1]
+		"all_dishes": return [DISHES.keys().filter(func(d): return int(dish_counts.get(d, 0)) > 0).size(), DISHES.size()]
+		"critic": return [1 if critic_five else 0, 1]
+		"good_friends": return [mini(best_hearts, 3), 3]
+		"all_friends": return [mini(min_hearts, 2), 2]
+		"best_friends": return [mini(best_hearts, 5), 5]
+		"level_4": return [mini(cafe_level(), 4), 4]
+		"coins_1000": return [mini(coins_total, 1000), 1000]
+	return [0, 1]
+
+
+## Unlocks every sticker whose goal is met, pays its reward and returns the new ids.
+func check_stickers() -> Array[String]:
+	var fresh: Array[String] = []
+	for st in STICKERS:
+		var id: String = st["id"]
+		if stickers.has(id):
+			continue
+		var p := sticker_progress(id)
+		if int(p[0]) >= int(p[1]):
+			stickers.append(id)
+			fresh.append(id)
+			add_coins(int(st["reward"]))
+			sticker_unlocked.emit(id)
+	return fresh
 
 
 # -- café level --------------------------------------------------------------------
@@ -295,6 +447,13 @@ func save_game() -> void:
 		"total_served": total_served,
 		"rating": rating,
 		"xp": xp,
+		"friends": friends,
+		"dish_counts": dish_counts,
+		"stickers": stickers,
+		"combos_total": combos_total,
+		"coins_total": coins_total,
+		"perfect_days": perfect_days,
+		"critic_five": critic_five,
 		"sound_on": sound_on,
 		"music_on": music_on,
 	}
@@ -314,6 +473,28 @@ func load_game() -> void:
 	total_served = int(parsed.get("total_served", 0))
 	rating = float(parsed.get("rating", 4.0))
 	xp = maxi(0, int(parsed.get("xp", 0)))
+	combos_total = int(parsed.get("combos_total", 0))
+	coins_total = int(parsed.get("coins_total", 0))
+	perfect_days = int(parsed.get("perfect_days", 0))
+	critic_five = bool(parsed.get("critic_five", false))
+	friends = {}
+	var saved_friends = parsed.get("friends", {})
+	if typeof(saved_friends) == TYPE_DICTIONARY:
+		for kind in saved_friends:
+			if GUESTS.has(kind) and typeof(saved_friends[kind]) == TYPE_DICTIONARY:
+				friends[kind] = {"points": int(saved_friends[kind].get("points", 0)), "visits": int(saved_friends[kind].get("visits", 0))}
+	dish_counts = {}
+	var saved_dishes = parsed.get("dish_counts", {})
+	if typeof(saved_dishes) == TYPE_DICTIONARY:
+		for d in saved_dishes:
+			if DISHES.has(d):
+				dish_counts[d] = int(saved_dishes[d])
+	stickers = []
+	var saved_stickers = parsed.get("stickers", [])
+	if typeof(saved_stickers) == TYPE_ARRAY:
+		for id in saved_stickers:
+			if not sticker_def(str(id)).is_empty():
+				stickers.append(str(id))
 	sound_on = bool(parsed.get("sound_on", true))
 	music_on = bool(parsed.get("music_on", true))
 	upgrades = {}
@@ -331,6 +512,13 @@ func reset() -> void:
 	total_served = 0
 	rating = 4.0
 	xp = 0
+	friends = {}
+	dish_counts = {}
+	stickers = []
+	combos_total = 0
+	coins_total = 0
+	perfect_days = 0
+	critic_five = false
 	coins_changed.emit(coins)
 	upgrades_changed.emit()
 	save_game()

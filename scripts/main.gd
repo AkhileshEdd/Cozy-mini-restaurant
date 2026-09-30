@@ -79,7 +79,21 @@ func _ready() -> void:
 	hud.next_day_pressed.connect(_prepare_day)
 	hud.buy_pressed.connect(_buy)
 	hud.pause_changed.connect(func(p: bool): get_tree().paused = p)
+	hud.book_changed.connect(func(open: bool):
+		if phase == Phase.OPEN or phase == Phase.CLOSING:
+			get_tree().paused = open)
 	hud.reset_confirmed.connect(_reset_progress)
+	GameState.friendship_up.connect(func(kind: String, h: int, gift: int):
+		if not stats.is_empty():
+			stats["friends"].append("%s %d %s" % [GameState.guest(kind)["name"], h, "heart" if h == 1 else "hearts"])
+		hud.toast("%s: %d %s! +%d" % [GameState.guest(kind)["name"], h, "heart" if h == 1 else "hearts", gift], Color("e07a8c"))
+		Audio.play("sparkle", 1.1))
+	GameState.sticker_unlocked.connect(func(id: String):
+		var st := GameState.sticker_def(id)
+		if not stats.is_empty():
+			stats["stickers"].append(st["name"])
+		hud.toast("Sticker: %s! +%d" % [st["name"], st["reward"]], CozyTheme.MINT_INK)
+		Audio.play("buy", 1.2))
 	GameState.leveled_up.connect(func(lvl: int):
 		if phase == Phase.OPEN or phase == Phase.CLOSING:
 			hud.toast("Café level %d!" % lvl, CozyTheme.MINT_INK)
@@ -102,7 +116,10 @@ func _add_static_blobs() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		hud.open_pause()
+		if hud.is_book_open():
+			hud.close_book()
+		else:
+			hud.open_pause()
 		return
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
 		if phase == Phase.OPEN or phase == Phase.CLOSING:
@@ -145,7 +162,7 @@ func _prepare_day() -> void:
 
 func _open_day() -> void:
 	phase = Phase.OPEN
-	stats = {"served": 0, "earned": 0, "grumpy": 0, "stars_sum": 0.0, "stars_n": 0, "xp": 0, "combos": 0, "level_start": GameState.cafe_level()}
+	stats = {"served": 0, "earned": 0, "grumpy": 0, "stars_sum": 0.0, "stars_n": 0, "xp": 0, "combos": 0, "level_start": GameState.cafe_level(), "friends": [], "stickers": []}
 	spawn_timer = 1.2
 	Audio.play("open")
 	hud.toast("We're open!", CozyTheme.MINT_INK)
@@ -164,6 +181,10 @@ func _end_day() -> void:
 	for st in stations.values():
 		(st as Station).reset()
 	var finished_day := GameState.day
+	if stats["served"] >= 5 and stats["grumpy"] == 0:
+		GameState.perfect_days += 1
+	GameState.check_stickers()
+	hud.flush_toasts()
 	var new_level := GameState.cafe_level()
 	var gift := 0
 	var unlocks: Array[String] = []
@@ -188,6 +209,8 @@ func _end_day() -> void:
 		"level_up": new_level > int(stats["level_start"]),
 		"gift": gift,
 		"unlocks": unlocks,
+		"friends": stats["friends"],
+		"stickers": stats["stickers"],
 	})
 
 
@@ -269,6 +292,8 @@ func _on_customer_left(c: Customer, happy: bool) -> void:
 	if c.xp > 0:
 		stats["xp"] += c.xp
 		GameState.add_xp(c.xp)
+	GameState.record_visit(c.kind, c.stars, c.served, c.is_combo())
+	hud.set_coins(GameState.coins, false)
 
 
 # -- input -------------------------------------------------------------------------

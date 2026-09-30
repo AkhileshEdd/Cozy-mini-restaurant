@@ -41,7 +41,7 @@ func setup(kind_id: String, target_seat: Seat, dishes: Array[String], patience_s
 	seat = target_seat
 	seat.occupant = self
 	orders = dishes.duplicate()
-	patience_max = patience_seconds * float(trait_info().get("patience", 1.0)) * (1.35 if orders.size() > 1 else 1.0)
+	patience_max = patience_seconds * float(trait_info().get("patience", 1.0)) * (1.35 if orders.size() > 1 else 1.0) * GameState.friend_patience(kind)
 	patience = patience_max
 	_exit_path = exit
 	load_model(KINDS[kind]["scene"])
@@ -149,6 +149,8 @@ func serve(dish: String) -> bool:
 	d.rotation.y = randf() * TAU
 	FX.pop_in(d)
 	_dishes.append(d)
+	if dish == trait_info().get("fav", ""):
+		FX.float_text(get_parent(), global_position + Vector3(0, 1.4, 0), "Favourite!", Color("e07a8c"), 52)
 	if not orders.is_empty():
 		_refresh_bubble()
 		_bubble.wobble()
@@ -180,7 +182,7 @@ func _pay_and_leave() -> void:
 		price += GameState.dish_price(dish)
 	if is_combo():
 		price = roundi(price * GameState.COMBO_BONUS)
-	var tip_rate: float = (0.1 + 0.45 * tip_fraction()) * GameState.tip_multiplier() * float(trait_info().get("tip", 1.0))
+	var tip_rate: float = (0.1 + 0.45 * tip_fraction()) * GameState.tip_multiplier() * float(trait_info().get("tip", 1.0)) * GameState.friend_tip(kind)
 	var tip := roundi(price * tip_rate)
 	seat.leave_coins(price + tip)
 	FX.float_text(get_parent(), seat.dish_position() + Vector3(0, 0.3, 0), ("Combo! +%d" if is_combo() else "+%d") % (price + tip))

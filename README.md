@@ -33,6 +33,25 @@ Every guest species has a personality. Its name pops up when the guest sits down
 | Sunny (chick) | In a hurry | Short patience, big tips |
 | Bao (panda) | Food critic | Orders the fanciest dish; his stars and XP count double |
 
+### Friendship hearts
+
+Every regular has a hidden favourite dish and a five-heart friendship meter.
+
+- A happy visit earns friendship points: 1 point, or 2 for a 4.5+ star visit, plus 1 if you served their favourite ("Favourite!" pops up).
+- Each new heart comes with a coin gift from that guest (10 × the heart number).
+- At 3 hearts a regular tips 10% more, and at 5 hearts they wait 20% longer.
+- A regular's favourite is revealed in the book once you reach their first heart.
+
+### Collection book
+
+Tap the book button in the top bar (or **Book** on the end-of-day screen). The game pauses while it's open. It has three tabs:
+
+- **Regulars:** portraits, traits, hearts, visits, favourite dish, next gift and friend perks.
+- **Menu:** every dish with how often you've served it and who loves it. Dishes you haven't unlocked show as silhouettes.
+- **Stickers:** 12 achievements with progress bars and coin rewards, such as *Perfect day* (5+ guests, nobody grumpy), *Combo king* (10 combos), *Critic's choice* (5 stars from Bao), *Best friends* (5 hearts) and *Piggy bank* (1000 coins earned).
+
+New hearts and stickers show up as toasts while you play and are listed on the results screen.
+
 ### Combo orders
 
 From café level 2, some guests order two dishes at once (Bruno always does). The bubble shows both dishes. Serve them in any order: each dish lands on the table and the bubble updates, and the guest starts eating when both have arrived. A finished combo pays 30% extra and gives bonus XP.
@@ -154,7 +173,7 @@ tools/                   asset forge, sound forge, gallery and icon tools
 tests/                   headless smoke test
 ```
 
-Balance lives in `scripts/autoload/game_state.gd`: `DISHES`, `UPGRADES` (costs and level requirements), `GUESTS` (traits), `LEVELS` (XP thresholds and titles), `patience()`, `spawn_interval()` and `day_length()`.
+Balance lives in `scripts/autoload/game_state.gd`: `DISHES`, `UPGRADES` (costs and level requirements), `GUESTS` (traits and favourites), `HEARTS` (friendship thresholds), `STICKERS`, `LEVELS` (XP thresholds and titles), `patience()`, `spawn_interval()` and `day_length()`.
 
 ## Tech notes
 

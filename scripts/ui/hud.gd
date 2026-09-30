@@ -7,6 +7,7 @@ signal next_day_pressed
 signal buy_pressed(id: String)
 signal pause_changed(paused: bool)
 signal reset_confirmed
+signal book_changed(open: bool)
 
 const TIPS := [
 	"Tap a station to start cooking. Tap it again when the dish is ready.",
@@ -38,6 +39,10 @@ var _music_btn: Button
 var _reset_btn: Button
 var _reset_armed := false
 var _shown_coins := 0
+var _toast_queue: Array = []
+var _toast_busy := false
+var _book: PanelContainer
+var _book_tab := "regulars"
 var _top_margin: MarginContainer
 var _bottom_margin: MarginContainer
 
@@ -61,6 +66,7 @@ func _ready() -> void:
 	_build_day_card()
 	_build_results()
 	_build_pause()
+	_build_book()
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_shown_coins = GameState.coins
@@ -164,6 +170,19 @@ func _build_top_bar() -> void:
 	rating_row.add_child(_rating_label)
 	rating_pill.add_child(rating_row)
 	bar.add_child(rating_pill)
+
+	var book := Button.new()
+	book.theme_type_variation = "RoundButton"
+	book.custom_minimum_size = Vector2(66, 66)
+	book.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	book.tooltip_text = "Collection book"
+	var book_center := CenterContainer.new()
+	book_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	book_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	book_center.add_child(Widgets.Glyph.new("book", 32))
+	book.add_child(book_center)
+	book.pressed.connect(func(): open_book())
+	bar.add_child(book)
 
 	var pause := Button.new()
 	pause.theme_type_variation = "RoundButton"
@@ -341,15 +360,34 @@ func set_tray(dishes: Array, capacity: int) -> void:
 		_tray_box.add_child(slot)
 
 
+## Toasts queue up so several events in a row are all readable.
 func toast(text: String, color := CozyTheme.TOMATO) -> void:
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
+	if _toast_queue.size() > 4:
+		return
+	_toast_queue.append([text, color])
+	if not _toast_busy:
+		_next_toast()
+
+
+func flush_toasts() -> void:
+	_toast_queue.clear()
+
+
+func _next_toast() -> void:
+	if _toast_queue.is_empty():
+		_toast_busy = false
+		return
+	_toast_busy = true
+	var item: Array = _toast_queue.pop_front()
+	_toast.text = item[0]
+	_toast.add_theme_color_override("font_color", item[1])
 	var t := create_tween()
 	_toast.scale = Vector2.ONE * 0.6
 	_toast.modulate.a = 1.0
 	t.tween_property(_toast, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_interval(1.3)
-	t.tween_property(_toast, "modulate:a", 0.0, 0.4)
+	t.tween_interval(1.1 if _toast_queue.is_empty() else 0.8)
+	t.tween_property(_toast, "modulate:a", 0.0, 0.3)
+	t.tween_callback(_next_toast)
 
 
 func coin_target() -> Vector2:
@@ -392,7 +430,7 @@ func _modal(panel: Control, on: bool) -> void:
 
 
 func any_modal_open() -> bool:
-	return _day_card.visible or _results.visible or _pause_menu.visible
+	return _day_card.visible or _results.visible or _pause_menu.visible or _book.visible
 
 
 func show_day_card(day: int, menu: Array[String]) -> void:
@@ -489,12 +527,31 @@ func show_results(summary: Dictionary) -> void:
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			l.custom_minimum_size = Vector2(560, 0)
 			head_col.add_child(l)
+	var news: Array[String] = []
+	for f in summary.get("friends", []):
+		news.append(f)
+	for st in summary.get("stickers", []):
+		news.append("sticker " + st)
+	if not news.is_empty():
+		var l := _label("Today: " + ", ".join(PackedStringArray(news)), 20, "Body")
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(560, 0)
+		l.add_theme_color_override("font_color", Color("b4533f"))
+		head_col.add_child(l)
 	col.add_child(head)
 
 	var shop_head := _hbox(10)
 	var shop_title := _label("Café shop", 38)
 	shop_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	shop_head.add_child(shop_title)
+	var book_btn := Button.new()
+	book_btn.theme_type_variation = "SoftButton"
+	book_btn.text = "Book"
+	book_btn.custom_minimum_size = Vector2(0, 60)
+	book_btn.add_theme_font_size_override("font_size", 24)
+	book_btn.pressed.connect(func(): open_book())
+	shop_head.add_child(book_btn)
 	var coin_pill := _pill()
 	var coin_row := _hbox(6)
 	coin_row.add_child(_icon(IconFactory.get_icon("coin"), 40))
@@ -616,6 +673,177 @@ func _fill_shop() -> void:
 func _refresh_shop_coins(c: int) -> void:
 	if _shop_coins and is_instance_valid(_shop_coins):
 		_shop_coins.text = str(c)
+
+
+# -- collection book -------------------------------------------------------------
+
+func _build_book() -> void:
+	_book = PanelContainer.new()
+	_book.theme_type_variation = "Sheet"
+	_book.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_book.visible = false
+	root.add_child(_book)
+
+
+func open_book(tab := "") -> void:
+	if tab != "":
+		_book_tab = tab
+	Audio.play("tap")
+	var was_open := _book.visible
+	_fill_book()
+	if not was_open:
+		_book.visible = true
+		_book.modulate.a = 0.0
+		create_tween().tween_property(_book, "modulate:a", 1.0, 0.2)
+		book_changed.emit(true)
+
+
+func close_book() -> void:
+	Audio.play("tap")
+	_book.visible = false
+	book_changed.emit(false)
+
+
+func is_book_open() -> bool:
+	return _book.visible
+
+
+func _fill_book() -> void:
+	for c in _book.get_children():
+		c.queue_free()
+	var col := _vbox(14)
+	_book.add_child(col)
+	col.add_child(_spacer(_top_margin.get_theme_constant("margin_top") + 4))
+	var head := _hbox(10)
+	var title := _label("Collection book", 44)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var close := Button.new()
+	close.theme_type_variation = "SoftButton"
+	close.text = "Close"
+	close.custom_minimum_size = Vector2(0, 64)
+	close.pressed.connect(close_book)
+	head.add_child(close)
+	col.add_child(head)
+
+	var tabs := _hbox(10)
+	for pair in [["regulars", "Regulars"], ["menu", "Menu"], ["stickers", "Stickers %d/%d" % [GameState.stickers.size(), GameState.STICKERS.size()]]]:
+		var b := Button.new()
+		b.text = pair[1]
+		b.theme_type_variation = "BuyButton" if pair[0] == _book_tab else "SoftButton"
+		b.custom_minimum_size = Vector2(0, 64)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 24)
+		var id: String = pair[0]
+		b.pressed.connect(func(): open_book(id))
+		tabs.add_child(b)
+	col.add_child(tabs)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var list := _vbox(12)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	col.add_child(scroll)
+	match _book_tab:
+		"regulars":
+			for kind in GameState.GUESTS:
+				list.add_child(_regular_row(kind))
+		"menu":
+			for dish in GameState.DISHES:
+				list.add_child(_dish_row(dish))
+		"stickers":
+			for st in GameState.STICKERS:
+				list.add_child(_sticker_row(st))
+	col.add_child(_spacer(_bottom_margin.get_theme_constant("margin_bottom")))
+
+
+func _book_row(icon: Texture2D, tint: Color, dim := false) -> Array:
+	var row := PanelContainer.new()
+	row.theme_type_variation = "Row"
+	var h := _hbox(14)
+	row.add_child(h)
+	var icon_bg := PanelContainer.new()
+	icon_bg.add_theme_stylebox_override("panel", CozyTheme.box(tint, 22, 2))
+	icon_bg.custom_minimum_size = Vector2(96, 96)
+	icon_bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var ic := _icon(icon, 90)
+	if dim:
+		ic.modulate = Color(0.35, 0.28, 0.27, 0.45)
+	icon_bg.add_child(ic)
+	h.add_child(icon_bg)
+	var text := _vbox(4)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(text)
+	return [row, text]
+
+
+func _regular_row(kind: String) -> Control:
+	var g: Dictionary = GameState.GUESTS[kind]
+	var f := GameState.friend(kind)
+	var h := GameState.hearts(kind)
+	var parts := _book_row(IconFactory.get_icon(kind), Color("fde6ea"))
+	var text: VBoxContainer = parts[1]
+	text.add_child(_label("%s · %s" % [g["name"], g["trait"]], 26))
+	var hearts := Widgets.HeartRow.new(26, 5)
+	hearts.set_value(h + (GameState.heart_progress(kind) if h < 5 else 0.0))
+	text.add_child(hearts)
+	var fav := GameState.dish_name(g["fav"]) if h >= 1 else "???"
+	var lines := "%s. Visits: %d. Favourite: %s." % [g["desc"], int(f["visits"]), fav]
+	if h < 5:
+		lines += " Next heart gift: %d coins." % GameState.heart_gift(h + 1)
+	var perks: Array[String] = []
+	if h >= GameState.TIP_HEART:
+		perks.append("tips 10% more")
+	if h >= GameState.PATIENCE_HEART:
+		perks.append("waits 20% longer")
+	if not perks.is_empty():
+		lines += " Friend perk: " + ", ".join(PackedStringArray(perks)) + "."
+	var body := _label(lines, 20, "Body")
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(420, 0)
+	text.add_child(body)
+	return parts[0]
+
+
+func _dish_row(dish: String) -> Control:
+	var count := int(GameState.dish_counts.get(dish, 0))
+	var tint: Color = GameState.DISHES[dish]["tint"]
+	var parts := _book_row(IconFactory.get_icon(dish), tint.lightened(0.6), count == 0)
+	var text: VBoxContainer = parts[1]
+	var unlocked := GameState.menu().has(dish)
+	text.add_child(_label(GameState.dish_name(dish) if count > 0 or unlocked else "???", 26))
+	var info := ("Served once" if count == 1 else "Served %d times" % count) if count > 0 else ("On the menu, not served yet" if unlocked else "Not on the menu yet")
+	info += " · %d coins · %s" % [GameState.dish_price(dish), GameState.STATION_NAMES[GameState.DISHES[dish]["station"]]]
+	var fans: Array[String] = []
+	for kind in GameState.GUESTS:
+		if GameState.GUESTS[kind]["fav"] == dish and GameState.hearts(kind) >= 1:
+			fans.append(GameState.GUESTS[kind]["name"])
+	if not fans.is_empty():
+		info += " · Loved by " + ", ".join(PackedStringArray(fans))
+	var body := _label(info, 20, "Body")
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(420, 0)
+	text.add_child(body)
+	return parts[0]
+
+
+func _sticker_row(st: Dictionary) -> Control:
+	var id: String = st["id"]
+	var got := GameState.stickers.has(id)
+	var parts := _book_row(IconFactory.get_icon(st["icon"]), Color("fff3cc") if got else CozyTheme.LINEN, not got)
+	var text: VBoxContainer = parts[1]
+	text.add_child(_label(st["name"], 26))
+	var p := GameState.sticker_progress(id)
+	var status := "Unlocked · +%d coins" % st["reward"] if got else "%d / %d · reward %d coins" % [p[0], p[1], st["reward"]]
+	var body := _label("%s. %s" % [st["desc"], status], 20, "Body")
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(420, 0)
+	if got:
+		body.add_theme_color_override("font_color", CozyTheme.MINT_INK)
+	text.add_child(body)
+	return parts[0]
 
 
 func _upgrade_tint(id: String) -> Color:
