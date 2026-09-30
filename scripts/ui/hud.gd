@@ -8,6 +8,13 @@ signal buy_pressed(id: String)
 signal pause_changed(paused: bool)
 signal reset_confirmed
 signal book_changed(open: bool)
+signal decorate_pressed
+signal decorate_done
+signal deco_take(id: String)
+signal deco_rotate
+signal deco_store
+signal style_pressed(cat: String, id: String)
+signal decor_buy_pressed(id: String)
 
 const TIPS := [
 	"Tap a station to start cooking. Tap it again when the dish is ready.",
@@ -42,6 +49,13 @@ var _shown_coins := 0
 var _toast_queue: Array = []
 var _toast_busy := false
 var _book: PanelContainer
+var _tray_panel: PanelContainer
+var _deco_panel: PanelContainer
+var _deco_hint: Label
+var _deco_charm: Label
+var _deco_storage: HBoxContainer
+var _shop_tab := "upgrades"
+var _shop_tabs_box: HBoxContainer
 var _book_tab := "regulars"
 var _top_margin: MarginContainer
 var _bottom_margin: MarginContainer
@@ -210,6 +224,8 @@ func _build_bottom() -> void:
 	panel.theme_type_variation = "Row"
 	panel.add_theme_stylebox_override("panel", CozyTheme.box(CozyTheme.WHITE, 34, 18, true))
 	_bottom_margin.add_child(panel)
+	_tray_panel = panel
+	_build_decorate_panel()
 	var row := _hbox(14)
 	panel.add_child(row)
 	var text_col := _vbox(2)
@@ -470,14 +486,26 @@ func show_day_card(day: int, menu: Array[String]) -> void:
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tip.custom_minimum_size = Vector2(520, 0)
 	col.add_child(tip)
+	var buttons := _hbox(12)
+	var deco := Button.new()
+	deco.theme_type_variation = "SoftButton"
+	deco.text = "Decorate"
+	deco.custom_minimum_size = Vector2(190, 92)
+	deco.pressed.connect(func():
+		Audio.play("tap")
+		_modal(_day_card, false)
+		decorate_pressed.emit())
+	buttons.add_child(deco)
 	var open := Button.new()
 	open.text = "Open café"
 	open.custom_minimum_size = Vector2(0, 92)
+	open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	open.pressed.connect(func():
 		Audio.play("tap")
 		_modal(_day_card, false)
 		open_pressed.emit())
-	col.add_child(open)
+	buttons.add_child(open)
+	col.add_child(buttons)
 	_modal(_day_card, true)
 	_center(_day_card)
 
@@ -561,6 +589,8 @@ func show_results(summary: Dictionary) -> void:
 	shop_head.add_child(coin_pill)
 	col.add_child(shop_head)
 
+	_shop_tabs_box = _hbox(10)
+	col.add_child(_shop_tabs_box)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -618,6 +648,25 @@ func _spacer(h: float) -> Control:
 func _fill_shop() -> void:
 	for c in _shop_list.get_children():
 		c.queue_free()
+	if _shop_tabs_box and is_instance_valid(_shop_tabs_box):
+		for c in _shop_tabs_box.get_children():
+			c.queue_free()
+		for pair in [["upgrades", "Upgrades"], ["style", "Style & décor"]]:
+			var b := Button.new()
+			b.text = pair[1]
+			b.theme_type_variation = "BuyButton" if pair[0] == _shop_tab else "SoftButton"
+			b.custom_minimum_size = Vector2(0, 60)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.add_theme_font_size_override("font_size", 24)
+			var tab: String = pair[0]
+			b.pressed.connect(func():
+				Audio.play("tap")
+				_shop_tab = tab
+				_fill_shop())
+			_shop_tabs_box.add_child(b)
+	if _shop_tab == "style":
+		_fill_style_shop()
+		return
 	for u in GameState.UPGRADES:
 		var id: String = u["id"]
 		var cost := GameState.next_cost(id)
@@ -668,6 +717,205 @@ func _fill_shop() -> void:
 			buy.pressed.connect(func(): buy_pressed.emit(id))
 			h.add_child(buy)
 		_shop_list.add_child(row)
+
+
+# -- style shop ------------------------------------------------------------------
+
+func _fill_style_shop() -> void:
+	for cat in ["wall", "floor", "outfit"]:
+		_shop_list.add_child(_section(GameState.STYLE_TITLES[cat]))
+		for id in GameState.STYLES[cat]:
+			_shop_list.add_child(_style_row(cat, id))
+	_shop_list.add_child(_section("Décor · charm %d, +%d%% tips" % [GameState.charm(), roundi(GameState.charm_bonus() * 100)]))
+	for id in GameState.DECOR:
+		_shop_list.add_child(_decor_row(id))
+
+
+func _section(text: String) -> Label:
+	var l := _label(text, 28)
+	l.add_theme_color_override("font_color", Color("b4533f"))
+	return l
+
+
+func _swatch(colors: Array) -> Control:
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", CozyTheme.box(CozyTheme.LINEN, 22, 10))
+	box.custom_minimum_size = Vector2(84, 84)
+	var stripes := _hbox(3)
+	for c in colors:
+		var p := Panel.new()
+		p.add_theme_stylebox_override("panel", CozyTheme.box(c, 8, 0))
+		p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stripes.add_child(p)
+	box.add_child(stripes)
+	return box
+
+
+func _shop_row(visual: Control, title: String, desc: String) -> Array:
+	var row := PanelContainer.new()
+	row.theme_type_variation = "Row"
+	var h := _hbox(14)
+	row.add_child(h)
+	visual.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(visual)
+	var text := _vbox(2)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.add_child(_label(title, 26))
+	var d := _label(desc, 20, "Body")
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(300, 0)
+	text.add_child(d)
+	h.add_child(text)
+	return [row, h]
+
+
+func _row_label(text: String, color: Color) -> Label:
+	var l := _label(text, 22)
+	l.add_theme_color_override("font_color", color)
+	l.custom_minimum_size = Vector2(130, 0)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return l
+
+
+func _row_button(text: String, variation: String, enabled: bool, action: Callable) -> Button:
+	var b := Button.new()
+	b.theme_type_variation = variation
+	b.text = text
+	b.custom_minimum_size = Vector2(130, 72)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.add_theme_font_size_override("font_size", 24)
+	b.disabled = not enabled
+	b.pressed.connect(action)
+	return b
+
+
+func _style_row(cat: String, id: String) -> Control:
+	var def := GameState.style_def(cat, id)
+	var cols: Dictionary = def["colors"]
+	var keys := ["peach", "peach_dark", "strawberry"] if cat == "wall" else (["wood", "wood_light", "mint_light"] if cat == "floor" else ["chef_hat", "chef_apron", "chef_scarf"])
+	var swatch_colors: Array = []
+	for k in keys:
+		swatch_colors.append(Color(cols[k]))
+	var desc := "Wallpaper and curtains" if cat == "wall" else ("Planks and kitchen tiles" if cat == "floor" else "Hat, apron and scarf for Chef Mochi")
+	if def.has("req_friend"):
+		desc = "A gift from %s at %d hearts" % [GameState.guest(def["req_friend"][0])["name"], int(def["req_friend"][1])]
+	var parts := _shop_row(_swatch(swatch_colors), def["name"], desc)
+	var h: HBoxContainer = parts[1]
+	var lock := GameState.style_lock(cat, id)
+	if GameState.equipped.get(cat, "") == id:
+		h.add_child(_row_label("In use", CozyTheme.MINT_INK))
+	elif lock != "" and not GameState.owns_style(cat, id):
+		h.add_child(_row_label(lock, CozyTheme.INK_SOFT))
+		parts[0].modulate = Color(1, 1, 1, 0.7)
+	elif GameState.owns_style(cat, id):
+		h.add_child(_row_button("Use", "SoftButton", true, func(): style_pressed.emit(cat, id)))
+	elif int(def["cost"]) == 0:
+		h.add_child(_row_button("Claim", "BuyButton", true, func(): style_pressed.emit(cat, id)))
+	else:
+		h.add_child(_row_button(str(def["cost"]), "BuyButton", GameState.coins >= int(def["cost"]), func(): style_pressed.emit(cat, id)))
+	return parts[0]
+
+
+func _decor_row(id: String) -> Control:
+	var def := GameState.decor_def(id)
+	var icon_bg := PanelContainer.new()
+	icon_bg.add_theme_stylebox_override("panel", CozyTheme.box(CozyTheme.MINT_BG, 22, 2))
+	icon_bg.custom_minimum_size = Vector2(84, 84)
+	icon_bg.add_child(_icon(IconFactory.get_icon(def["model"]), 78))
+	var owned := int(GameState.decor_owned.get(id, 0))
+	var desc := "Charm +%d. Owned: %d (%d in storage)" % [def["charm"], owned, GameState.decor_in_storage(id)] if owned > 0 else "Charm +%d. Place it anywhere with Decorate." % def["charm"]
+	var parts := _shop_row(icon_bg, def["name"], desc)
+	var h: HBoxContainer = parts[1]
+	var lock := GameState.decor_lock(id)
+	if lock != "":
+		h.add_child(_row_label(lock, CozyTheme.INK_SOFT))
+		parts[0].modulate = Color(1, 1, 1, 0.7)
+	else:
+		h.add_child(_row_button(str(def["cost"]), "BuyButton", GameState.coins >= int(def["cost"]), func(): decor_buy_pressed.emit(id)))
+	return parts[0]
+
+
+# -- decorate mode -----------------------------------------------------------------
+
+func _build_decorate_panel() -> void:
+	_deco_panel = PanelContainer.new()
+	_deco_panel.add_theme_stylebox_override("panel", CozyTheme.box(CozyTheme.WHITE, 34, 18, true))
+	_deco_panel.visible = false
+	_bottom_margin.add_child(_deco_panel)
+	var col := _vbox(10)
+	_deco_panel.add_child(col)
+	var head := _hbox(10)
+	var title := _label("Decorate", 30)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	_deco_charm = _label("", 22, "Body")
+	_deco_charm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(_deco_charm)
+	col.add_child(head)
+	_deco_hint = _label("", 22, "Body")
+	_deco_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_deco_hint.custom_minimum_size = Vector2(600, 0)
+	col.add_child(_deco_hint)
+	var scroll := ScrollContainer.new()
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, 96)
+	_deco_storage = _hbox(10)
+	scroll.add_child(_deco_storage)
+	col.add_child(scroll)
+	var buttons := _hbox(10)
+	for pair in [["Rotate", deco_rotate], ["Store", deco_store]]:
+		var b := Button.new()
+		b.theme_type_variation = "SoftButton"
+		b.text = pair[0]
+		b.custom_minimum_size = Vector2(0, 76)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var sig: Signal = pair[1]
+		b.pressed.connect(func(): sig.emit())
+		buttons.add_child(b)
+	var done := Button.new()
+	done.text = "Done"
+	done.custom_minimum_size = Vector2(0, 76)
+	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	done.pressed.connect(func():
+		Audio.play("tap")
+		decorate_done.emit())
+	buttons.add_child(done)
+	col.add_child(buttons)
+
+
+func show_decorate(on: bool) -> void:
+	_deco_panel.visible = on
+	_tray_panel.visible = not on
+
+
+func update_decorate(hint: String) -> void:
+	_deco_hint.text = hint
+	_deco_charm.text = "Charm %d · +%d%% tips" % [GameState.charm(), roundi(GameState.charm_bonus() * 100)]
+	for c in _deco_storage.get_children():
+		c.queue_free()
+	var any := false
+	for id in GameState.DECOR:
+		var n := GameState.decor_in_storage(id)
+		if n <= 0:
+			continue
+		any = true
+		var b := Button.new()
+		b.theme_type_variation = "SoftButton"
+		b.custom_minimum_size = Vector2(150, 88)
+		b.icon = IconFactory.get_icon(GameState.decor_def(id)["model"])
+		b.expand_icon = true
+		b.text = "×%d" % n
+		b.add_theme_font_size_override("font_size", 24)
+		var decor_id: String = id
+		b.pressed.connect(func(): deco_take.emit(decor_id))
+		_deco_storage.add_child(b)
+	if not any:
+		var l := _label("Storage is empty. Buy décor in the end-of-day shop.", 20, "Body")
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_deco_storage.add_child(l)
 
 
 func _refresh_shop_coins(c: int) -> void:

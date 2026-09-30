@@ -104,6 +104,45 @@ func _ready() -> void:
 	_check(main.stations["griddle"].unlocked, "griddle station active next day")
 	await _shot("60_day2")
 
+	# -- step 3: style shop, outfits, decorate mode --------------------------
+	GameState.coins = 1000
+	_check(GameState.buy_style("wall", "mint"), "bought the mint wallpaper")
+	_check(_room_has_color(Color(GameState.STYLES["wall"]["mint"]["colors"]["peach"])), "walls turned mint")
+	_check(not GameState.buy_style("outfit", "mint"), "Lily's outfit needs 3 hearts")
+	GameState.friend("frog")["points"] = GameState.HEARTS[2]
+	_check(GameState.buy_style("outfit", "mint"), "Lily's outfit claimed at 3 hearts")
+	_check(GameState.equipped["outfit"] == "mint", "outfit equipped")
+	_check(GameState.buy_decor("fern") and GameState.buy_decor("flowers"), "bought décor")
+
+	main.hud._modal(main.hud._day_card, false)
+	await get_tree().create_timer(0.7).timeout  # let the new table finish popping in
+	main._start_decorating()
+	await get_tree().process_frame
+	var deco: Decorator = main.decorator
+	var fern := deco.spawn_decor("fern", Vector3(0, 0, -0.25))
+	_check(deco.check(fern) == "", "fern fits in the middle aisle (%s)" % deco.check(fern))
+	fern.global_position = main.DOOR_INSIDE
+	_check(deco.check(fern) != "", "décor can't block the door")
+	fern.global_position = Vector3(0, 0, -3.0)
+	_check(deco.check(fern) != "", "décor can't block the kitchen walkway")
+	fern.global_position = Vector3(0, 0, -0.25)
+	var t0: CafeTable = main.tables[0]
+	var home := t0.global_position
+	t0.global_position = main.tables[1].global_position
+	_check(deco.check(t0) != "", "tables can't overlap")
+	t0.global_position = home
+	deco.save_layout()
+	_check(GameState.charm() == 1 and GameState.decor_in_storage("fern") == 0, "placed fern adds charm")
+	await _shot("70_decorate")
+	main._stop_decorating()
+	await get_tree().process_frame
+	GameState.save_game()
+	GameState.layout = {}
+	GameState.load_game()
+	_check(GameState.placed_decor().size() == 1 and GameState.equipped["wall"] == "mint", "layout and style survive save/load")
+	GameState.buy_style("wall", "peach")
+	GameState.buy_style("outfit", "classic")
+
 	GameState.reset()
 	if failures.is_empty():
 		print("SMOKE OK: served=%d coins_after_day=%d" % [main.stats.get("served", 0), main.stats.get("earned", 0)])
@@ -149,6 +188,16 @@ func _do(task: Dictionary) -> void:
 	main._task_id += 1
 	task["id"] = main._task_id
 	main.chef.enqueue(task)
+
+
+func _room_has_color(c: Color) -> bool:
+	for node in main.get_node("Cafe").find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		for i in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(i) as StandardMaterial3D
+			if m and m.albedo_color.is_equal_approx(c):
+				return true
+	return false
 
 
 func _check(cond: bool, what: String) -> void:

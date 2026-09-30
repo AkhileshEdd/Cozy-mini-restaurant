@@ -204,7 +204,70 @@ def flowers():
     return n
 
 
+def floor_lamp():
+    n = Node("FloorLamp")
+    n.cyl("wood_dark", (0, 0, 0), 0.17, 0.05, bevel=0.02, seg=20)
+    n.rod("cocoa", (0, 0.04, 0), (0, 1.22, 0), 0.018)
+    n.lathe("butter", [(0.1, 1.2), (0.24, 1.2), (0.24, 1.2), (0.15, 1.5), (0.15, 1.5), (0.1, 1.5)], seg=24)
+    n.torus("butter_dark", (0, 1.2, 0), 0.24, 0.016, seg=24, tube=6)
+    n.sphere("bulb", (0, 1.28, 0), 0.07, seg=12, rings=8)
+    for k in range(6):
+        a = math.radians(k * 60)
+        n.sphere("strawberry", (0.245 * math.sin(a), 1.17, 0.245 * math.cos(a)), 0.022, seg=8, rings=5)
+    return n
+
+
+def flower_tub():
+    n = Node("FlowerTub")
+    n.rbox("wood_mid", (0, 0.16, 0), (0.62, 0.32, 0.4), 0.05)
+    n.rbox("wood_dark", (0, 0.3, 0), (0.66, 0.05, 0.44), 0.02)
+    n.rbox("dirt_dark", (0, 0.32, 0), (0.54, 0.03, 0.32), 0.01)
+    mats = ("strawberry", "butter", "lavender", "white", "sky", "pink_light")
+    for k in range(9):
+        x = -0.2 + (k % 3) * 0.2 + ((k // 3) % 2) * 0.05
+        z = -0.1 + (k // 3) * 0.1
+        h = 0.5 + ((k * 7) % 3) * 0.06
+        n.rod("leaf", (x, 0.32, z), (x, h, z), 0.008, seg=6)
+        n.ell("leaf_light", (x + 0.03, 0.4, z), (0.035, 0.009, 0.018), rot=(0, 0, 25), seg=8, rings=4)
+        mat = mats[k % len(mats)]
+        for p in range(5):
+            a = math.radians(p * 72)
+            n.sphere(mat, (x + 0.03 * math.sin(a), h, z + 0.03 * math.cos(a)), 0.026, s=(1, 0.5, 1), seg=8, rings=5)
+        n.sphere("butter_dark" if mat != "butter" else "ginger", (x, h + 0.01, z), 0.018, seg=8, rings=5)
+    return n
+
+
+def bookcase():
+    n = Node("Bookcase")
+    # open-fronted carcass: back, sides, top, bottom and a middle shelf
+    n.rbox("wood_dark", (0, 0.45, -0.15), (0.86, 0.86, 0.04), 0.015, steps=1)
+    for sx in (-1, 1):
+        n.rbox("wood", (sx * 0.43, 0.45, 0), (0.05, 0.9, 0.34), 0.02, steps=2)
+    for y in (0.04, 0.45, 0.88):
+        n.rbox("wood", (0, y, 0), (0.9, 0.05, 0.34), 0.02, steps=2)
+    colours = ("tomato", "mint", "sky", "butter", "lavender", "strawberry", "leaf", "ginger")
+    for shelf, y in enumerate((0.07, 0.48)):
+        x = -0.36
+        k = shelf * 3
+        while x < 0.34:
+            w = 0.05 + ((k * 5) % 3) * 0.015
+            h = 0.22 + ((k * 3) % 4) * 0.025
+            tilt = -10 if k % 7 == 3 else 0
+            n.rbox(colours[k % len(colours)], (x + w / 2, y + h / 2, 0.04), (w, h, 0.22), 0.01, rot=(0, 0, tilt), steps=1)
+            x += w + 0.008
+            k += 1
+    n.lathe("terracotta", [(0, 0), (0.07, 0), (0.08, 0.1), (0, 0.1)], c=(0.28, 0.9, 0.0), seg=14)
+    n.sphere("leaf_mid", (0.28, 1.04, 0.0), 0.09)
+    n.sphere("leaf_light", (0.24, 1.08, 0.04), 0.06)
+    n.cyl("pink_light", (-0.25, 0.9, 0.02), 0.07, 0.05, bevel=0.02, seg=16)
+    n.sphere("berry", (-0.25, 0.97, 0.02), 0.025, seg=8, rings=6)
+    return n
+
+
 MODELS = {
+    "floor_lamp": floor_lamp,
+    "flower_tub": flower_tub,
+    "bookcase": bookcase,
     "table": table,
     "chair": chair,
     "plant_big": plant_big,

@@ -73,6 +73,13 @@ func nearest_open(c: Vector2i) -> Vector2i:
 	return c
 
 
+## True when both points are on open floor and connected.
+func reachable(a: Vector3, b: Vector3) -> bool:
+	if not is_open(a) or not is_open(b):
+		return false
+	return not astar.get_id_path(cell_of(a), cell_of(b)).is_empty()
+
+
 ## World-space path from `from` to `to`, smoothed so characters walk in straight lines.
 func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 	from.y = 0.0

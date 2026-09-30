@@ -6,6 +6,7 @@ signal upgrades_changed
 signal leveled_up(level: int)
 signal friendship_up(kind: String, hearts: int, gift: int)
 signal sticker_unlocked(id: String)
+signal style_changed
 
 const SAVE_PATH := "user://cozy_save.json"
 const SAVE_VERSION := 1
@@ -88,6 +89,45 @@ const STICKERS := [
 	{"id": "coins_1000", "name": "Piggy bank", "desc": "Earn 1000 coins in total", "icon": "coin", "reward": 100},
 ]
 
+## Café style: each entry recolours palette materials of the room or the chef.
+## Unlocks: `cost` coins, optionally `req_level` (café level) or
+## `req_friend` ([guest kind, hearts]) which makes the item a free gift.
+const STYLES := {
+	"wall": {
+		"peach": {"name": "Peach wallpaper", "cost": 0, "colors": {"peach": "fad7c0", "peach_light": "fde4d3", "peach_dark": "f7c4a8", "strawberry": "f48fa0", "strawberry_dark": "e07a8c"}},
+		"mint": {"name": "Mint garden", "cost": 90, "colors": {"peach": "c9eedb", "peach_light": "e4f5ec", "peach_dark": "b5e3cb", "strawberry": "f9b8c8", "strawberry_dark": "e07a8c"}},
+		"butter": {"name": "Butter sunshine", "cost": 90, "colors": {"peach": "fff0c2", "peach_light": "fff6da", "peach_dark": "fbe3a0", "strawberry": "9ccbeb", "strawberry_dark": "7ab3db"}},
+		"lavender": {"name": "Lavender dream", "cost": 120, "req_level": 2, "colors": {"peach": "e3d9f5", "peach_light": "eee8fa", "peach_dark": "d3c6ee", "strawberry": "ffd66b", "strawberry_dark": "f2c14e"}},
+		"sky": {"name": "Sky breeze", "cost": 120, "req_level": 3, "colors": {"peach": "dceffa", "peach_light": "eaf5fc", "peach_dark": "c7e4f5", "strawberry": "e8665a", "strawberry_dark": "c94f45"}},
+		"cocoa": {"name": "Cocoa evening", "cost": 200, "req_level": 4, "colors": {"peach": "9e7e70", "peach_light": "ad8f82", "peach_dark": "8c6a5c", "strawberry": "ffd66b", "strawberry_dark": "f2c14e"}},
+	},
+	"floor": {
+		"honey": {"name": "Honey planks", "cost": 0, "colors": {"wood": "e8b98a", "wood_mid": "d9a273", "wood_light": "f0c9a0", "mint_light": "c9eedb"}},
+		"birch": {"name": "Pale birch", "cost": 80, "colors": {"wood": "f3dec0", "wood_mid": "e8cda8", "wood_light": "faebd5", "mint_light": "dceffa"}},
+		"cherry": {"name": "Cherry wood", "cost": 110, "req_level": 2, "colors": {"wood": "c98e62", "wood_mid": "b87850", "wood_light": "d6a07a", "mint_light": "f9d3dc"}},
+		"cocoa": {"name": "Walnut", "cost": 150, "req_level": 3, "colors": {"wood": "a8704a", "wood_mid": "966240", "wood_light": "b8825c", "mint_light": "e3d9f5"}},
+	},
+	"outfit": {
+		"classic": {"name": "Classic whites", "cost": 0, "colors": {"chef_hat": "ffffff", "chef_band": "f3e6d8", "chef_apron": "ffffff", "chef_pocket": "f48fa0", "chef_scarf": "e8665a"}},
+		"strawberry": {"name": "Strawberry chef", "cost": 120, "colors": {"chef_hat": "f9b8c8", "chef_band": "f48fa0", "chef_apron": "fde6ea", "chef_pocket": "e8505b", "chef_scarf": "f48fa0"}},
+		"mint": {"name": "Lily's mint set", "cost": 0, "req_friend": ["frog", 3], "colors": {"chef_hat": "c9eedb", "chef_band": "9ed9b8", "chef_apron": "e4f5ec", "chef_pocket": "6faf8e", "chef_scarf": "7bb86f"}},
+		"sunny": {"name": "Sunny's yellow set", "cost": 0, "req_friend": ["chick", 3], "colors": {"chef_hat": "fff1b8", "chef_band": "ffd66b", "chef_apron": "fff6da", "chef_pocket": "f2a65a", "chef_scarf": "ffd66b"}},
+		"lavender": {"name": "Bao's critic coat", "cost": 0, "req_friend": ["panda", 3], "colors": {"chef_hat": "e3d9f5", "chef_band": "c6b4e8", "chef_apron": "eee8fa", "chef_pocket": "a994d6", "chef_scarf": "c6b4e8"}},
+		"night": {"name": "Midnight chef", "cost": 300, "req_level": 5, "colors": {"chef_hat": "5a4a48", "chef_band": "ffd66b", "chef_apron": "6b5048", "chef_pocket": "ffd66b", "chef_scarf": "c6b4e8"}},
+	},
+}
+const STYLE_TITLES := {"wall": "Wallpaper", "floor": "Floor", "outfit": "Chef outfit"}
+
+## Décor you buy and place freely in decorate mode. Each placed piece adds
+## `charm`; every charm point is +2% tips (up to +30%).
+const DECOR := {
+	"fern": {"name": "Potted fern", "model": "plant_big", "cost": 40, "radius": 0.34, "charm": 1},
+	"bush": {"name": "Round bush", "model": "bush", "cost": 45, "radius": 0.4, "charm": 1},
+	"flowers": {"name": "Flower tub", "model": "flower_tub", "cost": 60, "radius": 0.38, "charm": 2},
+	"lamp": {"name": "Floor lamp", "model": "floor_lamp", "cost": 70, "radius": 0.26, "charm": 2, "req_level": 2},
+	"bookcase": {"name": "Bookcase", "model": "bookcase", "cost": 110, "radius": 0.5, "charm": 3, "req_level": 3},
+}
+
 ## Combo (two-dish) orders start at this café level.
 const COMBO_LEVEL := 2
 const COMBO_BONUS := 1.3
@@ -107,6 +147,13 @@ var combos_total := 0
 var coins_total := 0
 var perfect_days := 0
 var critic_five := false
+## "cat:id" entries, e.g. "wall:mint". Free defaults are always owned.
+var owned_styles: Array[String] = []
+var equipped: Dictionary = {"wall": "peach", "floor": "honey", "outfit": "classic"}
+## décor id -> number bought
+var decor_owned: Dictionary = {}
+## Saved positions: "tables" -> {index: [x, z]}, "decor" -> [{id, x, z, rot}], "menu" -> [x, z, rot]
+var layout: Dictionary = {}
 var sound_on := true
 var music_on := true
 
@@ -210,7 +257,7 @@ func patience() -> float:
 
 
 func tip_multiplier() -> float:
-	return 1.25 if level("lights") > 0 else 1.0
+	return (1.25 if level("lights") > 0 else 1.0) * (1.0 + charm_bonus())
 
 
 func spawn_interval() -> float:
@@ -373,6 +420,105 @@ func check_stickers() -> Array[String]:
 	return fresh
 
 
+# -- style and décor ---------------------------------------------------------------
+
+func style_def(cat: String, id: String) -> Dictionary:
+	return STYLES.get(cat, {}).get(id, {})
+
+
+func owns_style(cat: String, id: String) -> bool:
+	var def := style_def(cat, id)
+	if def.is_empty():
+		return false
+	if int(def["cost"]) == 0 and not def.has("req_friend") and not def.has("req_level"):
+		return true
+	return owned_styles.has(cat + ":" + id)
+
+
+## Why a style item can't be taken yet ("" when it can).
+func style_lock(cat: String, id: String) -> String:
+	var def := style_def(cat, id)
+	if def.has("req_level") and cafe_level() < int(def["req_level"]):
+		return "Level %d" % int(def["req_level"])
+	if def.has("req_friend"):
+		var need: Array = def["req_friend"]
+		if hearts(need[0]) < int(need[1]):
+			return "%s %d hearts" % [guest(need[0])["name"], int(need[1])]
+	return ""
+
+
+## Buys (or claims a gift) and equips it. Returns false if not possible.
+func buy_style(cat: String, id: String) -> bool:
+	var def := style_def(cat, id)
+	if def.is_empty() or style_lock(cat, id) != "":
+		return false
+	if not owns_style(cat, id):
+		var cost := int(def["cost"])
+		if coins < cost:
+			return false
+		coins -= cost
+		owned_styles.append(cat + ":" + id)
+		coins_changed.emit(coins)
+	equipped[cat] = id
+	style_changed.emit()
+	save_game()
+	return true
+
+
+func style_colors(cat: String) -> Dictionary:
+	var out := {}
+	var colors: Dictionary = style_def(cat, equipped.get(cat, "")).get("colors", {})
+	for name in colors:
+		out[name] = Color(colors[name])
+	return out
+
+
+func decor_def(id: String) -> Dictionary:
+	return DECOR.get(id, {})
+
+
+func decor_lock(id: String) -> String:
+	var def := decor_def(id)
+	if def.has("req_level") and cafe_level() < int(def["req_level"]):
+		return "Level %d" % int(def["req_level"])
+	return ""
+
+
+func buy_decor(id: String) -> bool:
+	var def := decor_def(id)
+	if def.is_empty() or decor_lock(id) != "" or coins < int(def["cost"]):
+		return false
+	coins -= int(def["cost"])
+	decor_owned[id] = int(decor_owned.get(id, 0)) + 1
+	coins_changed.emit(coins)
+	save_game()
+	return true
+
+
+func placed_decor() -> Array:
+	return layout.get("decor", [])
+
+
+## How many of a décor item are bought but not placed yet.
+func decor_in_storage(id: String) -> int:
+	var placed := 0
+	for d in placed_decor():
+		if d["id"] == id:
+			placed += 1
+	return int(decor_owned.get(id, 0)) - placed
+
+
+func charm() -> int:
+	var total := 0
+	for d in placed_decor():
+		total += int(decor_def(d["id"]).get("charm", 0))
+	return total
+
+
+func charm_bonus() -> float:
+	return minf(0.3, charm() * 0.02)
+
+
 # -- café level --------------------------------------------------------------------
 
 func cafe_level() -> int:
@@ -454,6 +600,10 @@ func save_game() -> void:
 		"coins_total": coins_total,
 		"perfect_days": perfect_days,
 		"critic_five": critic_five,
+		"owned_styles": owned_styles,
+		"equipped": equipped,
+		"decor_owned": decor_owned,
+		"layout": layout,
 		"sound_on": sound_on,
 		"music_on": music_on,
 	}
@@ -489,6 +639,25 @@ func load_game() -> void:
 		for d in saved_dishes:
 			if DISHES.has(d):
 				dish_counts[d] = int(saved_dishes[d])
+	owned_styles = []
+	var saved_owned = parsed.get("owned_styles", [])
+	if typeof(saved_owned) == TYPE_ARRAY:
+		for entry in saved_owned:
+			owned_styles.append(str(entry))
+	equipped = {"wall": "peach", "floor": "honey", "outfit": "classic"}
+	var saved_eq = parsed.get("equipped", {})
+	if typeof(saved_eq) == TYPE_DICTIONARY:
+		for cat in saved_eq:
+			if not style_def(cat, str(saved_eq[cat])).is_empty():
+				equipped[cat] = str(saved_eq[cat])
+	decor_owned = {}
+	var saved_decor = parsed.get("decor_owned", {})
+	if typeof(saved_decor) == TYPE_DICTIONARY:
+		for id in saved_decor:
+			if DECOR.has(id):
+				decor_owned[id] = int(saved_decor[id])
+	var saved_layout = parsed.get("layout", {})
+	layout = saved_layout if typeof(saved_layout) == TYPE_DICTIONARY else {}
 	stickers = []
 	var saved_stickers = parsed.get("stickers", [])
 	if typeof(saved_stickers) == TYPE_ARRAY:
@@ -519,6 +688,10 @@ func reset() -> void:
 	coins_total = 0
 	perfect_days = 0
 	critic_five = false
+	owned_styles = []
+	equipped = {"wall": "peach", "floor": "honey", "outfit": "classic"}
+	decor_owned = {}
+	layout = {}
 	coins_changed.emit(coins)
 	upgrades_changed.emit()
 	save_game()

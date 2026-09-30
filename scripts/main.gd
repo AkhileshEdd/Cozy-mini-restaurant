@@ -1,8 +1,9 @@
+class_name CafeGame
 extends Node3D
 ## Game controller: runs the day cycle, spawns guests, turns taps into chef
 ## tasks and applies shop upgrades to the café.
 
-enum Phase { LOADING, PREP, OPEN, CLOSING, RESULTS }
+enum Phase { LOADING, PREP, OPEN, CLOSING, RESULTS, DECORATE }
 
 const CUSTOMER_KINDS := ["bunny", "bear", "frog", "chick", "panda"]
 const DOOR_INSIDE := Vector3(2.55, 0.0, 1.95)
@@ -23,6 +24,7 @@ const MIN_V_FOV := 52.0
 @onready var hud: Hud = $Hud
 
 var grid := FloorGrid.new()
+var decorator: Decorator
 var chef: Chef
 var stations: Dictionary = {}
 var tables: Array[CafeTable] = []
@@ -56,6 +58,12 @@ func _ready() -> void:
 	_hour_hand = decor.find_child("HourHand", true, false)
 	_minute_hand = decor.find_child("MinuteHand", true, false)
 	_string_lights = $Cafe.find_child("Lights", true, false)
+	var placed := Node3D.new()
+	placed.name = "Placed"
+	decor.add_child(placed)
+	decorator = Decorator.new(self)
+	add_child(decorator)
+	decorator.load_layout()
 	camera.keep_aspect = Camera3D.KEEP_WIDTH
 	get_viewport().size_changed.connect(_fit_camera)
 	_fit_camera()
@@ -98,8 +106,17 @@ func _ready() -> void:
 		if phase == Phase.OPEN or phase == Phase.CLOSING:
 			hud.toast("Café level %d!" % lvl, CozyTheme.MINT_INK)
 			Audio.play("sparkle"))
+	hud.decorate_pressed.connect(_start_decorating)
+	hud.decorate_done.connect(_stop_decorating)
+	hud.deco_take.connect(func(id: String): decorator.take_from_storage(id))
+	hud.deco_rotate.connect(func(): decorator.rotate_selected())
+	hud.deco_store.connect(func(): decorator.store_selected())
+	hud.style_pressed.connect(_buy_style)
+	hud.decor_buy_pressed.connect(_buy_decor)
+	GameState.style_changed.connect(apply_style)
 	hud.set_coins(GameState.coins, false)
 	hud.set_rating(GameState.rating)
+	apply_style()
 	_apply_upgrades(false)
 	_prepare_day()
 
@@ -112,6 +129,49 @@ func _add_static_blobs() -> void:
 		if n.name.begins_with("Plant"):
 			CozyLook.add_blob(n, Vector2(0.8, 0.8))
 	CozyLook.add_blob(decor.get_node("MenuBoard"), Vector2(0.7, 0.6))
+
+
+## Wallpaper, floor and chef outfit from the style shop.
+func apply_style() -> void:
+	var room_colors := GameState.style_colors("wall")
+	room_colors.merge(GameState.style_colors("floor"), true)
+	CozyLook.apply_colors($Cafe, room_colors)
+	if chef:
+		CozyLook.apply_colors(chef.model, GameState.style_colors("outfit"), true)
+
+
+func _start_decorating() -> void:
+	phase = Phase.DECORATE
+	hud.show_decorate(true)
+	decorator.begin()
+
+
+func _stop_decorating() -> void:
+	decorator.end()
+	hud.show_decorate(false)
+	rebuild_grid()
+	_prepare_day()
+
+
+func _buy_style(cat: String, id: String) -> void:
+	if GameState.buy_style(cat, id):
+		Audio.play("buy")
+		hud.set_coins(GameState.coins)
+		if cat == "outfit" and chef:
+			FX.sparkles(actors, chef.global_position + Vector3(0, 1.0, 0), 20)
+	else:
+		Audio.play("nope")
+	hud.refresh_shop()
+
+
+func _buy_decor(id: String) -> void:
+	if GameState.buy_decor(id):
+		Audio.play("buy")
+		hud.set_coins(GameState.coins)
+		hud.toast("%s is in storage. Place it with Decorate!" % GameState.decor_def(id)["name"], CozyTheme.MINT_INK)
+	else:
+		Audio.play("nope")
+	hud.refresh_shop()
 
 
 func _notification(what: int) -> void:
@@ -299,6 +359,11 @@ func _on_customer_left(c: Customer, happy: bool) -> void:
 # -- input -------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if phase == Phase.DECORATE:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			decorator.tap(event.position)
+			get_viewport().set_input_as_handled()
+		return
 	if phase != Phase.OPEN and phase != Phase.CLOSING:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -309,7 +374,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _on_tap(pos: Vector2) -> void:
 	var task := _pick(pos)
 	if task.is_empty():
-		var hit = _floor_point(pos)
+		var hit = floor_point(pos)
 		if hit == null:
 			return
 		var p: Vector3 = grid.clamp_to_floor(hit)
@@ -352,7 +417,7 @@ func _pick(pos: Vector2) -> Dictionary:
 	return best
 
 
-func _floor_point(pos: Vector2):
+func floor_point(pos: Vector2):
 	var from := camera.project_ray_origin(pos)
 	var dir := camera.project_ray_normal(pos)
 	if absf(dir.y) < 0.001:
@@ -425,7 +490,7 @@ func _hint() -> String:
 	match phase:
 		Phase.PREP:
 			return "Tap Open café to welcome today's guests!"
-		Phase.RESULTS, Phase.LOADING:
+		Phase.RESULTS, Phase.LOADING, Phase.DECORATE:
 			return ""
 	var waiting: Array[Customer] = []
 	for c in customers:
@@ -487,7 +552,7 @@ func _apply_upgrades(animate: bool) -> void:
 		_toggle_decor(_string_lights, GameState.level("lights") > 0, animate)
 	if chef:
 		hud.set_tray(chef.carrying, GameState.carry_capacity())
-	_rebuild_grid()
+	rebuild_grid()
 
 
 func _toggle_decor(node: Node3D, on: bool, animate: bool) -> void:
@@ -500,7 +565,7 @@ func _toggle_decor(node: Node3D, on: bool, animate: bool) -> void:
 		FX.sparkles(decor, node.global_position + Vector3(0, 1.0, 0), 24)
 
 
-func _rebuild_grid() -> void:
+func rebuild_grid() -> void:
 	grid.clear()
 	for t in tables:
 		for o in t.obstacle_points():

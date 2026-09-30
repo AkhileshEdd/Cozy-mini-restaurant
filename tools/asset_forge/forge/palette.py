@@ -82,6 +82,12 @@ PALETTE = {
     "gold_dark": "E0A93A",
     "cloud": "8E8699",
     "cloud_dark": "6F6878",
+    # chef outfit slots (recoloured in game by the outfit shop)
+    "chef_hat": "FFFFFF",
+    "chef_band": "F3E6D8",
+    "chef_apron": "FFFFFF",
+    "chef_pocket": "F48FA0",
+    "chef_scarf": "E8665A",
     # light sources
     "glow": "FFC27A",
     "bulb": "FFF1B8",

@@ -67,9 +67,9 @@ def chef_cat():
         y = 0.07 + 0.34 * k / 8
         t = (y - 0.28) / 0.238
         prof.append((0.252 * max(0.0, 1 - t * t) ** 0.5, y))
-    body.lathe("white", prof, s=(1.0, 1.0, 0.885), seg=14, a0=-62, a1=62)
-    body.rbox("strawberry", (0, 0.2, 0.214), (0.11, 0.07, 0.03), 0.013)
-    body.cone("tomato", (0, 0.49, 0.16), 0.085, 0.11, rot=(180, 0, 0), s=(1.0, 1.0, 0.45))
+    body.lathe("chef_apron", prof, s=(1.0, 1.0, 0.885), seg=14, a0=-62, a1=62)
+    body.rbox("chef_pocket", (0, 0.2, 0.214), (0.11, 0.07, 0.03), 0.013)
+    body.cone("chef_scarf", (0, 0.49, 0.16), 0.085, 0.11, rot=(180, 0, 0), s=(1.0, 1.0, 0.45))
     body.capsule("ginger", (0.08, 0.1, -0.17), 0.035, 0.26, rot=(-55, 0, -25))
 
     _head(head, "ginger")
@@ -84,10 +84,10 @@ def chef_cat():
     _cheeks(head)
     _smile(head, y=0.128, z=0.272, w=True)
     # chef hat
-    head.cyl("white", (0, 0.4, -0.01), 0.2, 0.12, bevel=0.03, seg=28)
-    head.cyl("linen", (0, 0.4, -0.01), 0.205, 0.035, bevel=0.012, seg=28)
+    head.cyl("chef_hat", (0, 0.4, -0.01), 0.2, 0.12, bevel=0.03, seg=28)
+    head.cyl("chef_band", (0, 0.4, -0.01), 0.205, 0.035, bevel=0.012, seg=28)
     for c, r in (((-0.1, 0.57, -0.01), 0.11), ((0.1, 0.57, -0.01), 0.11), ((0, 0.58, 0.08), 0.1), ((0, 0.58, -0.1), 0.1), ((0, 0.63, -0.01), 0.13)):
-        head.sphere("white", c, r, seg=18, rings=12)
+        head.sphere("chef_hat", c, r, seg=18, rings=12)
     return root
 
 

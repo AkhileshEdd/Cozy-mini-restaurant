@@ -54,6 +54,25 @@ static func material_for(src: StandardMaterial3D, rim := false) -> StandardMater
 	return m
 
 
+## Recolour surfaces by their original palette material name, e.g.
+## {"peach": Color(...)} turns every wall panel mint. Used for café themes and
+## chef outfits. Surfaces not named in `colors` keep their stylised material.
+static func apply_colors(root: Node, colors: Dictionary, rim := false) -> void:
+	var meshes := root.find_children("*", "MeshInstance3D", true, false)
+	for node in meshes:
+		var mi := node as MeshInstance3D
+		if mi.mesh == null or mi.name == "Blob":
+			continue
+		for s in mi.mesh.get_surface_count():
+			var src := mi.mesh.surface_get_material(s) as StandardMaterial3D
+			if src == null or not colors.has(src.resource_name):
+				continue
+			var tinted := src.duplicate() as StandardMaterial3D
+			tinted.albedo_color = colors[src.resource_name]
+			tinted.resource_name = src.resource_name
+			mi.set_surface_override_material(s, material_for(tinted, rim))
+
+
 ## A see-through pastel look used for things that are not bought yet.
 static func ghostify(root: Node, enabled: bool) -> void:
 	if _ghost == null:
