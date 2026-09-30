@@ -44,7 +44,31 @@ const UPGRADES := [
 	{"id": "tray", "name": "Big tray", "desc": "Carry three dishes at once", "costs": [160], "req": [2], "icon": "tray"},
 	{"id": "lights", "name": "Fairy lights", "desc": "Guests tip 25% more", "costs": [150], "req": [3], "icon": "lights"},
 	{"id": "freezer", "name": "Berry sundae", "desc": "Adds the freezer and sundaes to the menu", "costs": [320], "req": [3], "icon": "sundae"},
+	{"id": "busser", "name": "Hire Nibbles", "desc": "A hamster busser who collects tips from tables", "costs": [240], "req": [2], "icon": "hamster"},
+	{"id": "waiter", "name": "Hire Pepper", "desc": "A penguin waiter who carries ready dishes to guests", "costs": [380], "req": [3], "icon": "penguin"},
 ]
+
+## Day events. One may be rolled for each day from day 3 on (see roll_event()).
+##   dish_weights: order bias   guest_weights: who visits   patience / tips: multipliers
+##   combo: chance of combo orders   rush: a lunchtime burst of guests
+const EVENTS := {
+	"rush": {"name": "Rush hour", "desc": "Around lunchtime twice as many guests arrive, and they tip 50% more.", "rush": true},
+	"rain": {"name": "Rainy day", "desc": "Guests crave soup and warm lattes and don't mind waiting a little longer.", "dish_weights": {"soup": 3.0, "latte": 2.0}, "patience": 1.15, "weather": "rain"},
+	"sunny": {"name": "Sunny day", "desc": "Sundaes and cakes fly off the counter. Tips are 10% bigger.", "dish_weights": {"sundae": 3.0, "cake": 2.0}, "tips": 1.1},
+	"critic": {"name": "Critic day", "desc": "Bao brought his critic friends. Expect lots of pandas!", "guest_weights": {"panda": 4.0}},
+	"festival": {"name": "Combo festival", "desc": "Everyone wants combos today, and combos pay 50% extra.", "combo": 0.6, "combo_bonus": 1.5},
+}
+const EVENT_START_DAY := 3
+const RUSH_WINDOW := Vector2(0.4, 0.62)
+
+## Seasons follow the phone's calendar. Each boosts one dish's price.
+const SEASONS := {
+	"spring": {"name": "Spring", "dish": "cake", "weather": "petals"},
+	"summer": {"name": "Summer", "dish": "sundae", "weather": ""},
+	"autumn": {"name": "Autumn", "dish": "soup", "weather": "leaves"},
+	"winter": {"name": "Winter", "dish": "latte", "weather": "snow"},
+}
+const SEASON_BONUS := 1.2
 
 ## The regulars. Each species has one personality trait.
 ##   patience / tip: multipliers   items: dishes per order   likes: allowed dishes
@@ -154,6 +178,12 @@ var equipped: Dictionary = {"wall": "peach", "floor": "honey", "outfit": "classi
 var decor_owned: Dictionary = {}
 ## Saved positions: "tables" -> {index: [x, z]}, "decor" -> [{id, x, z, rot}], "menu" -> [x, z, rot]
 var layout: Dictionary = {}
+## Today's event id ("" for a normal day). Rolled when a day is prepared.
+var today_event := ""
+## True during the rush-hour window of a rush day (set by the game).
+var rush_active := false
+## Forces a season (tests); "" follows the calendar.
+var season_override := ""
 var sound_on := true
 var music_on := true
 
@@ -232,7 +262,10 @@ func dish_name(dish: String) -> String:
 
 
 func dish_price(dish: String) -> int:
-	return int(DISHES[dish]["price"])
+	var price := int(DISHES[dish]["price"])
+	if dish == season_def().get("dish", ""):
+		price = roundi(price * SEASON_BONUS)
+	return price
 
 
 func tables_unlocked() -> int:
@@ -253,16 +286,17 @@ func carry_capacity() -> int:
 
 func patience() -> float:
 	var base := 44.0 - mini(day - 1, 8) * 1.6
-	return base * (1.15 if level("plants") > 0 else 1.0)
+	return base * (1.15 if level("plants") > 0 else 1.0) * float(event_def().get("patience", 1.0))
 
 
 func tip_multiplier() -> float:
-	return (1.25 if level("lights") > 0 else 1.0) * (1.0 + charm_bonus())
+	var mult := (1.25 if level("lights") > 0 else 1.0) * (1.0 + charm_bonus()) * float(event_def().get("tips", 1.0))
+	return mult * (1.5 if rush_active else 1.0)
 
 
 func spawn_interval() -> float:
 	var base := maxf(3.4, 8.0 - (day - 1) * 0.45)
-	return base * (0.85 if level("rug") > 0 else 1.0)
+	return base * (0.85 if level("rug") > 0 else 1.0) * (0.5 if rush_active else 1.0)
 
 
 func day_length() -> float:
@@ -295,15 +329,81 @@ func make_order(kind: String) -> Array[String]:
 	if pool.has(fav) and randf() < 0.35:
 		pool = [fav]
 	var count := int(g.get("items", 1))
-	if count == 1 and cafe_level() >= COMBO_LEVEL and randf() < 0.25:
+	var combo_chance := float(event_def().get("combo", 0.25))
+	if count == 1 and cafe_level() >= COMBO_LEVEL and randf() < combo_chance:
 		count = 2
 	var out: Array[String] = []
 	for i in count:
 		var choices := pool.filter(func(d: String): return not out.has(d))
 		if choices.is_empty():
 			choices = pool
-		out.append(choices.pick_random())
+		out.append(_weighted(choices, event_def().get("dish_weights", {})))
 	return out
+
+
+func _weighted(items: Array, weights: Dictionary) -> String:
+	var total := 0.0
+	for it in items:
+		total += float(weights.get(it, 1.0))
+	var r := randf() * total
+	for it in items:
+		r -= float(weights.get(it, 1.0))
+		if r <= 0.0:
+			return it
+	return items[items.size() - 1]
+
+
+func pick_guest(kinds: Array) -> String:
+	return _weighted(kinds, event_def().get("guest_weights", {}))
+
+
+func combo_bonus() -> float:
+	return float(event_def().get("combo_bonus", COMBO_BONUS))
+
+
+# -- events and seasons ------------------------------------------------------------
+
+func event_def() -> Dictionary:
+	return EVENTS.get(today_event, {})
+
+
+## Picks today's event: none before EVENT_START_DAY, then about 60% of days.
+func roll_event() -> String:
+	today_event = ""
+	rush_active = false
+	if day >= EVENT_START_DAY and randf() < 0.6:
+		var ids := EVENTS.keys()
+		# the festival needs combos (café level 2)
+		if cafe_level() < COMBO_LEVEL:
+			ids.erase("festival")
+		today_event = ids.pick_random()
+	return today_event
+
+
+func season() -> String:
+	if season_override != "":
+		return season_override
+	var m := int(Time.get_date_dict_from_system()["month"])
+	if m == 12 or m <= 2:
+		return "winter"
+	if m <= 5:
+		return "spring"
+	if m <= 8:
+		return "summer"
+	return "autumn"
+
+
+func season_def() -> Dictionary:
+	return SEASONS[season()]
+
+
+## Weather shown outside today: an event (rain) beats the season's.
+func weather() -> String:
+	return str(event_def().get("weather", season_def().get("weather", "")))
+
+
+func has_helper(id: String) -> bool:
+	return level(id) > 0
 
 
 # -- friendship --------------------------------------------------------------------

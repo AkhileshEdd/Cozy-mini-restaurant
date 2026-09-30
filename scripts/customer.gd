@@ -181,7 +181,7 @@ func _pay_and_leave() -> void:
 	for dish in served:
 		price += GameState.dish_price(dish)
 	if is_combo():
-		price = roundi(price * GameState.COMBO_BONUS)
+		price = roundi(price * GameState.combo_bonus())
 	var tip_rate: float = (0.1 + 0.45 * tip_fraction()) * GameState.tip_multiplier() * float(trait_info().get("tip", 1.0)) * GameState.friend_tip(kind)
 	var tip := roundi(price * tip_rate)
 	seat.leave_coins(price + tip)

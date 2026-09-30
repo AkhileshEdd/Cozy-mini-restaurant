@@ -171,7 +171,54 @@ def panda():
     return root
 
 
+def _front_shell(body, mat, y0=0.07, y1=0.41, span=62, rx=0.252, zs=0.885):
+    """A shell hugging the front of the egg body (aprons, bellies)."""
+    prof = []
+    for k in range(9):
+        y = y0 + (y1 - y0) * k / 8
+        t = (y - 0.28) / 0.238
+        prof.append((rx * max(0.0, 1 - t * t) ** 0.5, y))
+    body.lathe(mat, prof, s=(1.0, 1.0, zs), seg=14, a0=-span, a1=span)
+
+
+def penguin():
+    """Pepper, the waiter you can hire."""
+    root, body, head = _base("Pepper", "panda_dark", "beak", "panda_dark", arms="panda_dark", wings=True)
+    _front_shell(body, "white", 0.06, 0.44, 58)
+    body.ell("tomato", (-0.045, 0.47, 0.17), (0.045, 0.028, 0.02), rot=(0, 0, 15), seg=10, rings=6)
+    body.ell("tomato", (0.045, 0.47, 0.17), (0.045, 0.028, 0.02), rot=(0, 0, -15), seg=10, rings=6)
+    body.sphere("tomato_dark", (0, 0.47, 0.185), 0.018, seg=8, rings=6)
+    head.ell("panda_dark", (0, 0.22, 0), (0.285, 0.26, 0.265), seg=28, rings=18)
+    head.ell("white", (0, 0.2, 0.1), (0.23, 0.19, 0.18), seg=24, rings=14)
+    _eyes(head, y=0.24, x=0.095, z=0.262)
+    _cheeks(head, y=0.16, x=0.15, z=0.24)
+    head.cone("beak", (0, 0.15, 0.265), 0.05, 0.08, rot=(90, 0, 0), s=(1.3, 1.0, 0.6))
+    head.sphere("panda_dark", (0.0, 0.47, -0.02), 0.03)
+    return root
+
+
+def hamster():
+    """Nibbles, the busser you can hire."""
+    root, body, head = _base("Nibbles", "hamster", "bear_muzzle", "hamster", arms="hamster")
+    _front_shell(body, "mint", 0.07, 0.4, 60)
+    body.rbox("mint_dark", (0, 0.22, 0.212), (0.1, 0.06, 0.03), 0.012)
+    body.sphere("hamster", (0, 0.12, -0.21), 0.04)
+    head.ell("hamster", (0, 0.22, 0), (0.3, 0.255, 0.27), seg=28, rings=18)
+    for sx in (-1, 1):
+        head.sphere("hamster", (sx * 0.19, 0.42, -0.02), 0.07)
+        head.ell("pink_inner", (sx * 0.19, 0.42, 0.03), (0.04, 0.04, 0.02))
+        head.ell("cream", (sx * 0.12, 0.12, 0.17), (0.12, 0.1, 0.1), seg=16, rings=10)
+    head.ell("cream", (0, 0.3, 0.19), (0.08, 0.07, 0.05))
+    _eyes(head, y=0.25, x=0.1, z=0.24)
+    head.ell("strawberry", (0, 0.17, 0.27), (0.02, 0.014, 0.012), seg=10, rings=6)
+    _smile(head, y=0.13, z=0.262, w=True)
+    _cheeks(head, y=0.15, x=0.19, z=0.23)
+    return root
+
+
 MODELS = {
+    "helper_penguin": penguin,
+    "helper_hamster": hamster,
     "chef_cat": chef_cat,
     "cust_bunny": bunny,
     "cust_bear": bear,

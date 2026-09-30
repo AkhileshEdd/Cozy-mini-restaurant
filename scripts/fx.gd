@@ -151,3 +151,71 @@ static func emote(parent: Node, pos: Vector3, kind: String) -> void:
 	var spin := e.create_tween().set_loops(3)
 	spin.tween_property(e, "rotation:y", 0.35, 0.18)
 	spin.tween_property(e, "rotation:y", -0.35, 0.18)
+
+
+## Falling weather around (not inside) the café: rain, snow, petals or leaves.
+static func make_weather(kind: String) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Weather"
+	var zones := [
+		[Vector3(0, 3.4, 3.9), Vector3(5.2, 0.1, 1.2)],
+		[Vector3(-4.3, 3.4, -0.8), Vector3(1.0, 0.1, 4.2)],
+		[Vector3(4.3, 3.4, -0.8), Vector3(1.0, 0.1, 4.2)],
+		[Vector3(0, 3.4, -5.1), Vector3(5.2, 0.1, 0.7)],
+	]
+	for z in zones:
+		var p := CPUParticles3D.new()
+		p.position = z[0]
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		p.emission_box_extents = z[1]
+		p.direction = Vector3.DOWN
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.vertex_color_use_as_albedo = true
+		var area: float = z[1].x * z[1].z
+		match kind:
+			"rain":
+				var drop := BoxMesh.new()
+				drop.size = Vector3(0.018, 0.34, 0.018)
+				drop.material = mat
+				p.mesh = drop
+				p.amount = int(clampf(area * 14.0, 16, 90))
+				p.lifetime = 0.55
+				p.initial_velocity_min = 6.0
+				p.initial_velocity_max = 7.0
+				p.gravity = Vector3(0, -12, 0)
+				p.spread = 4.0
+				p.color = Color(0.72, 0.82, 0.95, 0.65)
+			_:
+				var flake := SphereMesh.new()
+				flake.radius = 0.04 if kind == "snow" else 0.05
+				flake.height = flake.radius * (2.0 if kind == "snow" else 0.7)
+				flake.radial_segments = 8
+				flake.rings = 4
+				flake.material = mat
+				p.mesh = flake
+				p.amount = int(clampf(area * (5.0 if kind == "snow" else 2.2), 6, 50))
+				p.lifetime = 4.5
+				p.initial_velocity_min = 0.25
+				p.initial_velocity_max = 0.5
+				p.gravity = Vector3(0.12, -0.55, 0)
+				p.spread = 30.0
+				p.angle_min = 0.0
+				p.angle_max = 360.0
+				var colors := {"snow": [Color("ffffff")], "petals": [Color("f9b8c8"), Color("fde6ea")], "leaves": [Color("e8854a"), Color("f2b45f"), Color("d96a3a")]}
+				var list: Array = colors.get(kind, [Color.WHITE])
+				var g := Gradient.new()
+				var offsets := PackedFloat32Array()
+				var cols := PackedColorArray()
+				for i in list.size():
+					offsets.append(float(i) / list.size())
+					cols.append(list[i])
+				g.offsets = offsets
+				g.colors = cols
+				g.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_CONSTANT
+				p.color_initial_ramp = g
+		p.preprocess = p.lifetime
+		p.emitting = true
+		root.add_child(p)
+	return root

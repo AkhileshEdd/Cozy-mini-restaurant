@@ -143,6 +143,42 @@ func _ready() -> void:
 	GameState.buy_style("wall", "peach")
 	GameState.buy_style("outfit", "classic")
 
+	# -- step 4: helpers, events, seasons --------------------------------------
+	GameState.xp = GameState.LEVELS[2]["xp"]
+	GameState.coins = 1000
+	_check(GameState.buy("busser") and GameState.buy("waiter"), "hired Nibbles and Pepper")
+	main._apply_upgrades(false)
+	_check(main.helpers.size() == 2, "both helpers are in the café")
+	main._prepare_day(false)
+	main.hud._modal(main.hud._day_card, false)
+	main._open_day()
+	Engine.time_scale = TIME_SCALE
+	var t := 0.0
+	while t < 50.0:
+		_cook_only_bot()
+		await get_tree().create_timer(0.25).timeout
+		t += 0.25
+	Engine.time_scale = 1.0
+	await _shot("80_helpers")
+	_check(main.stats["served"] > 0, "Pepper served guests without the chef (served=%d)" % main.stats["served"])
+	_check(main.stats["earned"] > 0, "Nibbles collected tips (earned=%d)" % main.stats["earned"])
+
+	GameState.today_event = "rain"
+	var soups := 0
+	for i in 300:
+		if GameState._weighted(["soup", "cake"], GameState.event_def()["dish_weights"]) == "soup":
+			soups += 1
+	_check(soups > 180, "rainy days favour soup (%d/300)" % soups)
+	GameState.today_event = "rush"
+	var calm := GameState.spawn_interval()
+	main._update_rush(0.5)
+	_check(GameState.rush_active and GameState.spawn_interval() < calm, "rush hour speeds up guests")
+	main._set_rush(false)
+	GameState.today_event = ""
+	GameState.season_override = "winter"
+	_check(GameState.weather() == "snow" and GameState.dish_price("latte") == 10, "winter: snow and pricier lattes")
+	GameState.season_override = ""
+
 	GameState.reset()
 	if failures.is_empty():
 		print("SMOKE OK: served=%d coins_after_day=%d" % [main.stats.get("served", 0), main.stats.get("earned", 0)])
@@ -182,6 +218,22 @@ func _bot() -> void:
 		if s.coins > 0:
 			_do({"type": "collect", "target": s, "point": s.approach_point(), "face": s.dish_position()})
 			return
+
+
+## Only cooks: the helpers have to carry dishes and collect tips.
+func _cook_only_bot() -> void:
+	var chef: Chef = main.chef
+	if chef == null or not chef.queue.is_empty() or not chef.current.is_empty():
+		return
+	for c in main.customers:
+		if not c.is_waiting():
+			continue
+		for dish in c.orders:
+			var st: Station = main.stations[GameState.DISHES[dish]["station"]]
+			if st.state == Station.State.IDLE:
+				main._task_id += 1
+				chef.enqueue({"type": "station", "target": st, "point": st.interaction_point(), "face": st.global_position, "id": main._task_id})
+				return
 
 
 func _do(task: Dictionary) -> void:

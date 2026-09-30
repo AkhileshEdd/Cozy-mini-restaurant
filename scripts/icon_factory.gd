@@ -20,6 +20,8 @@ const SPECS := {
 	"lights": {"model": "lamp_pendant", "pitch": 10.0, "center": Vector3(0, 0.05, 0), "radius": 0.3},
 	"heart": {"model": "emote_heart", "pitch": 0.0},
 	"plant_big": {"model": "plant_big", "pitch": 20.0},
+	"penguin": {"model": "helper_penguin", "pitch": 8.0, "center": Vector3(0, 0.62, 0), "radius": 0.5},
+	"hamster": {"model": "helper_hamster", "pitch": 8.0, "center": Vector3(0, 0.62, 0), "radius": 0.5},
 	"bush": {"model": "bush", "pitch": 25.0},
 	"flower_tub": {"model": "flower_tub", "pitch": 30.0},
 	"floor_lamp": {"model": "floor_lamp", "pitch": 10.0},

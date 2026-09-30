@@ -25,6 +25,16 @@ const MIN_V_FOV := 52.0
 
 var grid := FloorGrid.new()
 var decorator: Decorator
+var helpers: Array[Helper] = []
+var _weather: Node3D
+var _rush_on := false
+
+const HELPER_HOMES := {"waiter": Vector3(0.9, 0.0, -2.45), "busser": Vector3(-0.9, 0.0, -2.45)}
+const SEASON_COLORS := {
+	"spring": {"leaf_mid": "f9b8c8", "leaf_light": "fcd3de"},
+	"autumn": {"leaf": "d98a4a", "leaf_mid": "eba55a", "leaf_light": "f5c26b", "grass": "cfd58a", "grass_dark": "b9c173"},
+	"winter": {"leaf": "a9c9b8", "leaf_mid": "dfeee6", "leaf_light": "f4faf7", "grass": "f2f5f8", "grass_dark": "dfe6ee"},
+}
 var chef: Chef
 var stations: Dictionary = {}
 var tables: Array[CafeTable] = []
@@ -84,7 +94,7 @@ func _ready() -> void:
 		_hands_full_warned = false)
 
 	hud.open_pressed.connect(_open_day)
-	hud.next_day_pressed.connect(_prepare_day)
+	hud.next_day_pressed.connect(func(): _prepare_day(true))
 	hud.buy_pressed.connect(_buy)
 	hud.pause_changed.connect(func(p: bool): get_tree().paused = p)
 	hud.book_changed.connect(func(open: bool):
@@ -117,6 +127,7 @@ func _ready() -> void:
 	hud.set_coins(GameState.coins, false)
 	hud.set_rating(GameState.rating)
 	apply_style()
+	_apply_season()
 	_apply_upgrades(false)
 	_prepare_day()
 
@@ -140,6 +151,71 @@ func apply_style() -> void:
 		CozyLook.apply_colors(chef.model, GameState.style_colors("outfit"), true)
 
 
+# -- helpers, events, seasons ------------------------------------------------------
+
+func _sync_helpers(animate := false) -> void:
+	for role in ["waiter", "busser"]:
+		if not GameState.has_helper(role):
+			continue
+		var exists := false
+		for h in helpers:
+			if h.role == role:
+				exists = true
+		if exists:
+			continue
+		var h := Helper.new()
+		h.name = role.capitalize()
+		actors.add_child(h)
+		h.setup(role, self, HELPER_HOMES[role])
+		h.global_position = HELPER_HOMES[role]
+		helpers.append(h)
+		if animate:
+			FX.pop_in(h.model, 0.5)
+			FX.sparkles(actors, h.global_position + Vector3(0, 1.0, 0), 24)
+			hud.toast("%s joined the team!" % ("Pepper" if role == "waiter" else "Nibbles"), CozyTheme.MINT_INK)
+
+
+func _update_rush(frac: float) -> void:
+	if not GameState.event_def().get("rush", false):
+		return
+	_set_rush(frac >= GameState.RUSH_WINDOW.x and frac < GameState.RUSH_WINDOW.y)
+
+
+func _set_rush(on: bool) -> void:
+	if on == _rush_on:
+		return
+	_rush_on = on
+	GameState.rush_active = on
+	if on:
+		hud.toast("Rush hour! Tips +50%", CozyTheme.TOMATO)
+		Audio.play("open", 1.2)
+		spawn_timer = minf(spawn_timer, 0.5)
+	else:
+		hud.toast("Rush hour is over", CozyTheme.MINT_INK)
+
+
+func _apply_season() -> void:
+	var colors := {}
+	var palette: Dictionary = SEASON_COLORS.get(GameState.season(), {})
+	for name in palette:
+		colors[name] = Color(palette[name])
+	if not colors.is_empty():
+		CozyLook.apply_colors($Outside, colors)
+		CozyLook.apply_colors($Cafe, colors)
+
+
+func _update_weather() -> void:
+	if _weather:
+		_weather.queue_free()
+		_weather = null
+	var kind := GameState.weather()
+	var env: Environment = $WorldEnvironment.environment
+	env.background_color = Color("dfe3ea") if kind == "rain" else CozyLook.BACKGROUND
+	if kind != "":
+		_weather = FX.make_weather(kind)
+		add_child(_weather)
+
+
 func _start_decorating() -> void:
 	phase = Phase.DECORATE
 	hud.show_decorate(true)
@@ -150,7 +226,7 @@ func _stop_decorating() -> void:
 	decorator.end()
 	hud.show_decorate(false)
 	rebuild_grid()
-	_prepare_day()
+	_prepare_day(false)
 
 
 func _buy_style(cat: String, id: String) -> void:
@@ -201,7 +277,12 @@ func _fit_camera() -> void:
 
 # -- day cycle -------------------------------------------------------------------
 
-func _prepare_day() -> void:
+func _prepare_day(new_day := true) -> void:
+	if new_day:
+		GameState.roll_event()
+	_rush_on = false
+	GameState.rush_active = false
+	_update_weather()
 	phase = Phase.PREP
 	day_time = 0.0
 	for c in customers:
@@ -216,6 +297,9 @@ func _prepare_day() -> void:
 	chef.drop_all()
 	chef.global_position = CHEF_START
 	chef.yaw_target = 0.0
+	_sync_helpers()
+	for h in helpers:
+		h.reset_to_home()
 	_update_clock(0.0)
 	hud.show_day_card(GameState.day, GameState.menu())
 
@@ -279,10 +363,12 @@ func _process(delta: float) -> void:
 		var length := GameState.day_length()
 		if phase == Phase.OPEN:
 			day_time += delta
+			_update_rush(day_time / length)
 			spawn_timer -= delta
 			if spawn_timer <= 0.0:
 				spawn_timer = GameState.spawn_interval() * randf_range(0.8, 1.25) if _try_spawn() else 1.0
 			if day_time >= length:
+				_set_rush(false)
 				phase = Phase.CLOSING
 				hud.toast("Closing time!")
 				Audio.play("door", 0.8)
@@ -331,7 +417,7 @@ func _try_spawn() -> bool:
 	var exit := grid.find_path(seat.approach_point(), DOOR_INSIDE)
 	exit.append(DOOR_OUTSIDE)
 	exit.append(STREET)
-	var kind: String = kinds.pick_random()
+	var kind: String = GameState.pick_guest(kinds)
 	c.setup(kind, seat, GameState.make_order(kind), GameState.patience(), entry, exit)
 	c.left.connect(_on_customer_left)
 	customers.append(c)
@@ -458,32 +544,62 @@ func _perform(task: Dictionary) -> float:
 			for dish in chef.carrying.duplicate():
 				if c.wants(dish):
 					chef.remove_dish(dish)
-					c.serve(dish)
+					serve_customer(c, dish)
 					given += 1
-			if given > 0:
-				Audio.play("serve")
-				FX.sparkles(actors, c.global_position + Vector3(0, 1.2, 0))
-				if not c.is_waiting():
-					stats["served"] += 1
-					GameState.total_served += 1
-			else:
+			if given == 0:
 				c.serve("")
 				Audio.play("nope")
 				hud.toast("%s wants %s" % [c.display_name, c.order_text()], CozyTheme.INK)
 			return 0.0
 		"collect":
-			var s: Seat = task["target"]
-			if s.coins > 0:
-				var amount := s.collect()
-				stats["earned"] += amount
-				var screen := camera.unproject_position(s.dish_position())
-				Audio.play("sparkle", 1.2, -4.0)
-				hud.fly_coins(screen, amount, func():
-					GameState.add_coins(amount)
-					hud.set_coins(GameState.coins)
-					Audio.play("coin"))
+			collect_seat(task["target"])
 			return 0.0
 	return 0.0
+
+
+## Hands one dish to a guest (used by the chef and by Pepper).
+func serve_customer(c: Customer, dish: String) -> void:
+	c.serve(dish)
+	Audio.play("serve")
+	FX.sparkles(actors, c.global_position + Vector3(0, 1.2, 0))
+	if not c.is_waiting():
+		stats["served"] += 1
+		GameState.total_served += 1
+
+
+## Collects a table's tip into the coin counter (chef or Nibbles).
+func collect_seat(s: Seat) -> void:
+	if s.coins <= 0:
+		return
+	var amount := s.collect()
+	stats["earned"] += amount
+	var screen := camera.unproject_position(s.dish_position())
+	Audio.play("sparkle", 1.2, -4.0)
+	hud.fly_coins(screen, amount, func():
+		GameState.add_coins(amount)
+		hud.set_coins(GameState.coins)
+		Audio.play("coin"))
+
+
+func is_open() -> bool:
+	return phase == Phase.OPEN or phase == Phase.CLOSING
+
+
+## Is the chef already walking to (or queued for) this station/guest/seat?
+func chef_targets(obj: Object) -> bool:
+	if chef.current.get("target") == obj:
+		return true
+	for t in chef.queue:
+		if t.get("target") == obj:
+			return true
+	return false
+
+
+func helper_targets(obj: Object, except: Helper = null) -> bool:
+	for h in helpers:
+		if h != except and h.is_targeting(obj):
+			return true
+	return false
 
 
 func _hint() -> String:
@@ -552,6 +668,7 @@ func _apply_upgrades(animate: bool) -> void:
 		_toggle_decor(_string_lights, GameState.level("lights") > 0, animate)
 	if chef:
 		hud.set_tray(chef.carrying, GameState.carry_capacity())
+		_sync_helpers(animate)
 	rebuild_grid()
 
 

@@ -68,6 +68,7 @@ PALETTE = {
     "beak": "F29A4A",
     "panda": "F8F5F0",
     "panda_dark": "3E3844",
+    "hamster": "F2C79B",
     # food
     "coffee": "7A4B35",
     "foam": "F3DFC5",

@@ -471,6 +471,26 @@ func show_day_card(day: int, menu: Array[String]) -> void:
 		item.add_child(price)
 		dishes.add_child(item)
 	col.add_child(dishes)
+	var season: Dictionary = GameState.season_def()
+	var season_line := _label("%s · %s +%d%%" % [season["name"], GameState.dish_name(season["dish"]), roundi((GameState.SEASON_BONUS - 1.0) * 100)], 22, "Body")
+	season_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(season_line)
+	var event: Dictionary = GameState.event_def()
+	if not event.is_empty():
+		var ev := PanelContainer.new()
+		ev.add_theme_stylebox_override("panel", CozyTheme.box(Color("fff3cc"), 22, 14))
+		var ev_col := _vbox(4)
+		ev.add_child(ev_col)
+		var ev_title := _label("Today: " + event["name"], 28)
+		ev_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ev_title.add_theme_color_override("font_color", Color("b4533f"))
+		ev_col.add_child(ev_title)
+		var ev_desc := _label(event["desc"], 21, "Body")
+		ev_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		ev_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ev_desc.custom_minimum_size = Vector2(500, 0)
+		ev_col.add_child(ev_desc)
+		col.add_child(ev)
 	var kinds := GameState.GUESTS.keys()
 	var g: Dictionary = GameState.GUESTS[kinds[(day - 1) % kinds.size()]]
 	var meet := _label("Meet %s · %s" % [g["name"], g["trait"]], 26)
