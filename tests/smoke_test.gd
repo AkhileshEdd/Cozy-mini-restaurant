@@ -49,6 +49,23 @@ func _ready() -> void:
 	_check(GameState.day == 2, "advanced to day 2")
 	await _shot("50_results")
 
+	_check(GameState.xp > 0, "earned café XP (xp=%d, level %d)" % [GameState.xp, GameState.cafe_level()])
+	_check(GameState.make_order("bear").size() == 2, "Bruno always orders two dishes")
+	var sweet := GameState.make_order("bunny")
+	_check(sweet.size() >= 1 and not sweet.has("latte"), "Pip only orders desserts")
+
+	# level gating: the freezer needs café level 3
+	var saved_xp := GameState.xp
+	GameState.xp = 0
+	GameState.coins = 999
+	_check(not GameState.buy("freezer"), "freezer is locked below café level 3")
+	GameState.xp = GameState.LEVELS[2]["xp"]
+	_check(GameState.cafe_level() == 3, "XP threshold reaches level 3")
+	_check(GameState.buy("freezer"), "freezer can be bought at café level 3")
+	GameState.upgrades.erase("freezer")
+	GameState.xp = saved_xp
+	GameState.coins = 0
+
 	GameState.coins = max(GameState.coins, 200)
 	var before := GameState.tables_unlocked()
 	main._buy("table")
@@ -80,19 +97,25 @@ func _bot() -> void:
 	if chef == null or not chef.queue.is_empty() or not chef.current.is_empty():
 		return
 	for c in main.customers:
-		if c.is_waiting() and chef.carrying.has(c.order):
-			_do({"type": "serve", "target": c, "point": c.seat.approach_point(), "face": c.global_position})
-			return
+		if not c.is_waiting():
+			continue
+		for dish in chef.carrying:
+			if c.wants(dish):
+				_do({"type": "serve", "target": c, "point": c.seat.approach_point(), "face": c.global_position})
+				return
 	for c in main.customers:
 		if not c.is_waiting():
 			continue
-		var st: Station = main.stations[GameState.DISHES[c.order]["station"]]
-		if st.state == Station.State.READY and chef.can_carry():
-			_do({"type": "station", "target": st, "point": st.interaction_point(), "face": st.global_position})
-			return
-		if st.state == Station.State.IDLE:
-			_do({"type": "station", "target": st, "point": st.interaction_point(), "face": st.global_position})
-			return
+		for dish in c.orders:
+			if chef.carrying.has(dish):
+				continue
+			var st: Station = main.stations[GameState.DISHES[dish]["station"]]
+			if st.state == Station.State.READY and chef.can_carry():
+				_do({"type": "station", "target": st, "point": st.interaction_point(), "face": st.global_position})
+				return
+			if st.state == Station.State.IDLE:
+				_do({"type": "station", "target": st, "point": st.interaction_point(), "face": st.global_position})
+				return
 	for s in main.seats:
 		if s.coins > 0:
 			_do({"type": "collect", "target": s, "point": s.approach_point(), "face": s.dish_position()})

@@ -21,6 +21,30 @@ Everything is one-finger taps, in portrait.
 - The tray holds two dishes (three with the Big Tray upgrade).
 - Each day runs from 9:00 to 17:00. At closing, the café shop opens.
 
+### The regulars
+
+Every guest species has a personality. Its name pops up when the guest sits down, and the day card introduces one regular each day.
+
+| Guest | Trait | Effect |
+| --- | --- | --- |
+| Pip (bunny) | Sweet tooth | Only orders desserts, tips a little more |
+| Bruno (bear) | Big appetite | Always orders two dishes, waits longer |
+| Lily (frog) | Easygoing | Very patient, tips a little less |
+| Sunny (chick) | In a hurry | Short patience, big tips |
+| Bao (panda) | Food critic | Orders the fanciest dish; his stars and XP count double |
+
+### Combo orders
+
+From café level 2, some guests order two dishes at once (Bruno always does). The bubble shows both dishes. Serve them in any order: each dish lands on the table and the bubble updates, and the guest starts eating when both have arrived. A finished combo pays 30% extra and gives bonus XP.
+
+### Café levels
+
+Happy guests earn XP equal to their stars (combos +2, the critic counts double). XP raises your café through seven levels, from **Tiny Kiosk** up to **Legendary Bistro**. Each level-up:
+
+- gives a coin gift (25 × the new level)
+- unlocks more shop items, which show "Level N" until you reach it: soup, the rug and the big tray at level 2, the freezer and fairy lights at level 3, and higher tiers of speed and cooking upgrades
+- is celebrated on the results screen, which also shows your XP bar
+
 ### Menu and progression
 
 | Dish | Station | Cook time | Price | Unlock |
@@ -28,8 +52,8 @@ Everything is one-finger taps, in portrait.
 | Latte | Coffee machine | 3 s | 8 | Day 1 |
 | Strawberry cake | Bakery oven | 5 s | 14 | Day 1 |
 | Fluffy pancakes | Griddle | 6 s | 20 | Shop, 80 |
-| Pumpkin soup | Soup pot | 8 s | 28 | Shop, 180 |
-| Berry sundae | Freezer | 7 s | 34 | Shop, 320 |
+| Pumpkin soup | Soup pot | 8 s | 28 | Shop, 180 (café level 2) |
+| Berry sundae | Freezer | 7 s | 34 | Shop, 320 (café level 3) |
 
 The shop also sells extra tables (2 more seats each), Speedy Paws, Quick Kitchen, a Big Tray, and décor that shows up in the café. Cozy plants make guests more patient, a fluffy rug brings them more often, and fairy lights raise tips. Locked stations and tables stay in the café as see-through previews. Later days are longer and busier, and progress is saved automatically.
 
@@ -130,7 +154,7 @@ tools/                   asset forge, sound forge, gallery and icon tools
 tests/                   headless smoke test
 ```
 
-Balance lives in `scripts/autoload/game_state.gd`: `DISHES`, `UPGRADES`, `patience()`, `spawn_interval()` and `day_length()`.
+Balance lives in `scripts/autoload/game_state.gd`: `DISHES`, `UPGRADES` (costs and level requirements), `GUESTS` (traits), `LEVELS` (XP thresholds and titles), `patience()`, `spawn_interval()` and `day_length()`.
 
 ## Tech notes
 

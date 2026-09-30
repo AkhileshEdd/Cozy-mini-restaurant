@@ -4,6 +4,9 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, depth_test_disabled, blend_mix, shadows_disabled;
 
 uniform sampler2D icon : source_color, filter_linear_mipmap, repeat_disable;
+// Optional second dish for combo orders: both icons sit side by side.
+uniform sampler2D icon2 : source_color, filter_linear_mipmap, repeat_disable;
+uniform float two_icons = 0.0;
 uniform float progress : hint_range(0.0, 1.0) = 1.0;
 uniform vec4 ring_color : source_color = vec4(0.62, 0.85, 0.72, 1.0);
 uniform vec4 track_color : source_color = vec4(0.95, 0.90, 0.85, 1.0);
@@ -48,11 +51,24 @@ void fragment() {
 	vec3 ring_col = ang <= progress ? ring_color.rgb : track_color.rgb;
 	col = mix(col, ring_col, ring * shape);
 
-	// icon in the middle
-	vec2 iuv = q / (R * 1.12) + 0.5;
-	if (iuv.x > 0.0 && iuv.x < 1.0 && iuv.y > 0.0 && iuv.y < 1.0) {
-		vec4 ic = texture(icon, iuv);
-		col = mix(col, ic.rgb, ic.a * shape);
+	// icon(s) in the middle
+	if (two_icons > 0.5) {
+		vec2 a_uv = (q - vec2(-0.27, 0.04)) / (R * 0.9) + 0.5;
+		vec2 b_uv = (q - vec2(0.27, -0.04)) / (R * 0.9) + 0.5;
+		if (a_uv.x > 0.0 && a_uv.x < 1.0 && a_uv.y > 0.0 && a_uv.y < 1.0) {
+			vec4 ic = texture(icon, a_uv);
+			col = mix(col, ic.rgb, ic.a * shape);
+		}
+		if (b_uv.x > 0.0 && b_uv.x < 1.0 && b_uv.y > 0.0 && b_uv.y < 1.0) {
+			vec4 ic = texture(icon2, b_uv);
+			col = mix(col, ic.rgb, ic.a * shape);
+		}
+	} else {
+		vec2 iuv = q / (R * 1.12) + 0.5;
+		if (iuv.x > 0.0 && iuv.x < 1.0 && iuv.y > 0.0 && iuv.y < 1.0) {
+			vec4 ic = texture(icon, iuv);
+			col = mix(col, ic.rgb, ic.a * shape);
+		}
 	}
 
 	ALBEDO = col;

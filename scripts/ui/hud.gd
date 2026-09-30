@@ -403,6 +403,7 @@ func show_day_card(day: int, menu: Array[String]) -> void:
 	var title := _label("Day %d" % day, 60)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
+	col.add_child(_level_block(420))
 	var sub := _label("Welcome to Mochi's café! Today's menu:" if day == 1 else "Today's menu", 26, "Body")
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
@@ -416,6 +417,16 @@ func show_day_card(day: int, menu: Array[String]) -> void:
 		item.add_child(price)
 		dishes.add_child(item)
 	col.add_child(dishes)
+	var kinds := GameState.GUESTS.keys()
+	var g: Dictionary = GameState.GUESTS[kinds[(day - 1) % kinds.size()]]
+	var meet := _label("Meet %s · %s" % [g["name"], g["trait"]], 26)
+	meet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(meet)
+	var meet_desc := _label(g["desc"] + ".", 22, "Body")
+	meet_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	meet_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	meet_desc.custom_minimum_size = Vector2(520, 0)
+	col.add_child(meet_desc)
 	var tip := _label(TIPS[(day - 1) % TIPS.size()], 22, "Body")
 	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -465,6 +476,19 @@ func show_results(summary: Dictionary) -> void:
 		cell.add_child(small)
 		grid.add_child(cell)
 	head_col.add_child(grid)
+	head_col.add_child(_level_block(480, summary.get("xp", 0)))
+	if summary.get("level_up", false):
+		var up := _label("Level up! %s  +%d coins" % [GameState.level_title(), summary.get("gift", 0)], 28)
+		up.add_theme_color_override("font_color", CozyTheme.MINT_INK)
+		up.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		head_col.add_child(up)
+		var unlocks: Array = summary.get("unlocks", [])
+		if not unlocks.is_empty():
+			var l := _label("New: " + ", ".join(PackedStringArray(unlocks)), 20, "Body")
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.custom_minimum_size = Vector2(560, 0)
+			head_col.add_child(l)
 	col.add_child(head)
 
 	var shop_head := _hbox(10)
@@ -499,6 +523,32 @@ func show_results(summary: Dictionary) -> void:
 	col.add_child(next)
 	col.add_child(_spacer(_bottom_margin.get_theme_constant("margin_bottom")))
 	_modal(_results, true)
+
+
+## "Café level 2 · Cozy Corner" with an XP bar underneath.
+func _level_block(width: float, xp_today := -1) -> Control:
+	var box := _vbox(6)
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var head := _label("Café level %d · %s" % [GameState.cafe_level(), GameState.level_title()], 26)
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(head)
+	var track := Panel.new()
+	track.custom_minimum_size = Vector2(width, 14)
+	track.add_theme_stylebox_override("panel", CozyTheme.box(CozyTheme.LINEN, 7, 0))
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fill := Panel.new()
+	fill.add_theme_stylebox_override("panel", CozyTheme.box(Color("7fcf9f"), 7, 0))
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fill.size = Vector2(maxf(14.0, width * GameState.level_progress()), 14)
+	track.add_child(fill)
+	box.add_child(track)
+	var note := "Top level reached!" if GameState.is_max_level() else "%d XP to the next level" % GameState.xp_to_next()
+	if xp_today >= 0:
+		note = "+%d XP today · %s" % [xp_today, note]
+	var sub := _label(note, 20, "Body")
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(sub)
+	return box
 
 
 func _spacer(h: float) -> Control:
@@ -536,7 +586,15 @@ func _fill_shop() -> void:
 		desc.custom_minimum_size = Vector2(300, 0)
 		text.add_child(desc)
 		h.add_child(text)
-		if cost < 0:
+		if cost >= 0 and GameState.is_level_locked(id):
+			var locked := _label("Level %d" % GameState.required_level(id), 24)
+			locked.add_theme_color_override("font_color", CozyTheme.INK_SOFT)
+			locked.custom_minimum_size = Vector2(118, 0)
+			locked.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			locked.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.modulate = Color(1, 1, 1, 0.7)
+			h.add_child(locked)
+		elif cost < 0:
 			var owned := _label("Owned", 24)
 			owned.add_theme_color_override("font_color", CozyTheme.MINT_INK)
 			owned.custom_minimum_size = Vector2(118, 0)

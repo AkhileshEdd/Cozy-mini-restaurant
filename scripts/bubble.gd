@@ -21,8 +21,10 @@ func _init(size := 0.7, tail := true) -> void:
 	visible = false
 
 
-func set_icon(tex: Texture2D) -> void:
+func set_icon(tex: Texture2D, second: Texture2D = null) -> void:
 	_mat.set_shader_parameter("icon", tex)
+	_mat.set_shader_parameter("icon2", second)
+	_mat.set_shader_parameter("two_icons", 1.0 if second else 0.0)
 
 
 func set_progress(value: float, color: Color) -> void:

@@ -80,6 +80,10 @@ func _ready() -> void:
 	hud.buy_pressed.connect(_buy)
 	hud.pause_changed.connect(func(p: bool): get_tree().paused = p)
 	hud.reset_confirmed.connect(_reset_progress)
+	GameState.leveled_up.connect(func(lvl: int):
+		if phase == Phase.OPEN or phase == Phase.CLOSING:
+			hud.toast("Café level %d!" % lvl, CozyTheme.MINT_INK)
+			Audio.play("sparkle"))
 	hud.set_coins(GameState.coins, false)
 	hud.set_rating(GameState.rating)
 	_apply_upgrades(false)
@@ -141,7 +145,7 @@ func _prepare_day() -> void:
 
 func _open_day() -> void:
 	phase = Phase.OPEN
-	stats = {"served": 0, "earned": 0, "grumpy": 0, "stars_sum": 0.0, "stars_n": 0}
+	stats = {"served": 0, "earned": 0, "grumpy": 0, "stars_sum": 0.0, "stars_n": 0, "xp": 0, "combos": 0, "level_start": GameState.cafe_level()}
 	spawn_timer = 1.2
 	Audio.play("open")
 	hud.toast("We're open!", CozyTheme.MINT_INK)
@@ -160,6 +164,14 @@ func _end_day() -> void:
 	for st in stations.values():
 		(st as Station).reset()
 	var finished_day := GameState.day
+	var new_level := GameState.cafe_level()
+	var gift := 0
+	var unlocks: Array[String] = []
+	for lvl in range(int(stats["level_start"]) + 1, new_level + 1):
+		gift += GameState.level_gift(lvl)
+		unlocks.append_array(GameState.level_unlocks(lvl))
+	if gift > 0:
+		GameState.add_coins(gift)
 	GameState.day += 1
 	GameState.save_game()
 	hud.set_coins(GameState.coins)
@@ -171,6 +183,11 @@ func _end_day() -> void:
 		"served": stats["served"],
 		"earned": stats["earned"],
 		"grumpy": stats["grumpy"],
+		"xp": stats["xp"],
+		"combos": stats["combos"],
+		"level_up": new_level > int(stats["level_start"]),
+		"gift": gift,
+		"unlocks": unlocks,
 	})
 
 
@@ -231,7 +248,8 @@ func _try_spawn() -> bool:
 	var exit := grid.find_path(seat.approach_point(), DOOR_INSIDE)
 	exit.append(DOOR_OUTSIDE)
 	exit.append(STREET)
-	c.setup(kinds.pick_random(), seat, GameState.menu().pick_random(), GameState.patience(), entry, exit)
+	var kind: String = kinds.pick_random()
+	c.setup(kind, seat, GameState.make_order(kind), GameState.patience(), entry, exit)
 	c.left.connect(_on_customer_left)
 	customers.append(c)
 	Audio.play("door", 1.0, -6.0)
@@ -246,6 +264,11 @@ func _on_customer_left(c: Customer, happy: bool) -> void:
 	stats["stars_n"] += 1
 	if not happy:
 		stats["grumpy"] += 1
+	elif c.is_combo():
+		stats["combos"] += 1
+	if c.xp > 0:
+		stats["xp"] += c.xp
+		GameState.add_xp(c.xp)
 
 
 # -- input -------------------------------------------------------------------------
@@ -341,17 +364,22 @@ func _perform(task: Dictionary) -> float:
 			var c: Customer = task["target"]
 			if not is_instance_valid(c) or not c.is_waiting():
 				return 0.0
-			if chef.carrying.has(c.order):
-				chef.remove_dish(c.order)
-				c.serve(c.order)
+			var given := 0
+			for dish in chef.carrying.duplicate():
+				if c.wants(dish):
+					chef.remove_dish(dish)
+					c.serve(dish)
+					given += 1
+			if given > 0:
 				Audio.play("serve")
 				FX.sparkles(actors, c.global_position + Vector3(0, 1.2, 0))
-				stats["served"] += 1
-				GameState.total_served += 1
+				if not c.is_waiting():
+					stats["served"] += 1
+					GameState.total_served += 1
 			else:
 				c.serve("")
 				Audio.play("nope")
-				hud.toast("%s wants %s" % [c.display_name, GameState.dish_name(c.order).to_lower()], CozyTheme.INK)
+				hud.toast("%s wants %s" % [c.display_name, c.order_text()], CozyTheme.INK)
 			return 0.0
 		"collect":
 			var s: Seat = task["target"]
@@ -379,15 +407,20 @@ func _hint() -> String:
 		if c.is_waiting():
 			waiting.append(c)
 	for c in waiting:
-		if chef.carrying.has(c.order):
-			return "Tap %s to serve the %s." % [c.display_name, GameState.dish_name(c.order).to_lower()]
+		for dish in chef.carrying:
+			if c.wants(dish):
+				return "Tap %s to serve the %s." % [c.display_name, GameState.dish_name(dish).to_lower()]
 	for st in stations.values():
 		if st.state == Station.State.READY:
 			return "%s is ready! Tap the %s to pick it up." % [GameState.dish_name(st.dish_id), GameState.STATION_NAMES[st.station_id]]
 	for c in waiting:
-		var st: Station = stations[GameState.DISHES[c.order]["station"]]
-		if st.state == Station.State.IDLE:
-			return "%s wants %s. Tap the %s to cook." % [c.display_name, GameState.dish_name(c.order).to_lower(), GameState.STATION_NAMES[st.station_id]]
+		for dish in c.orders:
+			if chef.carrying.has(dish):
+				continue
+			var st: Station = stations[GameState.DISHES[dish]["station"]]
+			if st.state == Station.State.IDLE:
+				var what := "a combo: " + c.order_text() if c.orders.size() > 1 else GameState.dish_name(dish).to_lower()
+				return "%s wants %s. Tap the %s to cook." % [c.display_name, what, GameState.STATION_NAMES[st.station_id]]
 	for s in seats:
 		if s.coins > 0:
 			return "Tap the coins to tidy the table."
