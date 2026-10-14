@@ -114,8 +114,9 @@ const STICKERS := [
 ]
 
 ## Café style: each entry recolours palette materials of the room or the chef.
-## Unlocks: `cost` coins, optionally `req_level` (café level) or
-## `req_friend` ([guest kind, hearts]) which makes the item a free gift.
+## Unlocks: `cost` coins, optionally `req_level` (café level),
+## `req_friend` ([guest kind, hearts]) which makes the item a free gift, or
+## `req_premium` (a thank-you for buying "Remove ads").
 const STYLES := {
 	"wall": {
 		"peach": {"name": "Peach wallpaper", "cost": 0, "colors": {"peach": "fad7c0", "peach_light": "fde4d3", "peach_dark": "f7c4a8", "strawberry": "f48fa0", "strawberry_dark": "e07a8c"}},
@@ -138,8 +139,15 @@ const STYLES := {
 		"sunny": {"name": "Sunny's yellow set", "cost": 0, "req_friend": ["chick", 3], "colors": {"chef_hat": "fff1b8", "chef_band": "ffd66b", "chef_apron": "fff6da", "chef_pocket": "f2a65a", "chef_scarf": "ffd66b"}},
 		"lavender": {"name": "Bao's critic coat", "cost": 0, "req_friend": ["panda", 3], "colors": {"chef_hat": "e3d9f5", "chef_band": "c6b4e8", "chef_apron": "eee8fa", "chef_pocket": "a994d6", "chef_scarf": "c6b4e8"}},
 		"night": {"name": "Midnight chef", "cost": 300, "req_level": 5, "colors": {"chef_hat": "5a4a48", "chef_band": "ffd66b", "chef_apron": "6b5048", "chef_pocket": "ffd66b", "chef_scarf": "c6b4e8"}},
+		"golden": {"name": "Golden chef", "cost": 0, "req_premium": true, "colors": {"chef_hat": "f6c443", "chef_band": "fff1b8", "chef_apron": "ffffff", "chef_pocket": "f6c443", "chef_scarf": "c94f45"}},
 	},
 }
+## "Remove ads" also gives this many coins, once.
+const PREMIUM_GIFT := 300
+## Rewarded "free coins" in the shop: coins per ad and ads per café day.
+const FREE_COINS := 60
+const FREE_COINS_PER_DAY := 3
+
 const STYLE_TITLES := {"wall": "Wallpaper", "floor": "Floor", "outfit": "Chef outfit"}
 
 ## Décor you buy and place freely in decorate mode. Each placed piece adds
@@ -186,6 +194,12 @@ var rush_active := false
 var season_override := ""
 var sound_on := true
 var music_on := true
+## Bought "Remove ads" (kept by "Start over"; the store can restore it too).
+var premium := false
+var premium_gift_given := false
+## Free-coin ads watched on `free_coins_day`.
+var free_coins_day := 0
+var free_coins_claimed := 0
 
 
 func _ready() -> void:
@@ -530,7 +544,7 @@ func owns_style(cat: String, id: String) -> bool:
 	var def := style_def(cat, id)
 	if def.is_empty():
 		return false
-	if int(def["cost"]) == 0 and not def.has("req_friend") and not def.has("req_level"):
+	if int(def["cost"]) == 0 and not def.has("req_friend") and not def.has("req_level") and not def.has("req_premium"):
 		return true
 	return owned_styles.has(cat + ":" + id)
 
@@ -544,6 +558,8 @@ func style_lock(cat: String, id: String) -> String:
 		var need: Array = def["req_friend"]
 		if hearts(need[0]) < int(need[1]):
 			return "%s %d hearts" % [guest(need[0])["name"], int(need[1])]
+	if def.has("req_premium") and not premium:
+		return "With Remove ads"
 	return ""
 
 
@@ -682,6 +698,36 @@ func level_unlocks(lvl: int) -> Array[String]:
 	return out
 
 
+# -- premium and rewarded ads ---------------------------------------------------
+
+## Turns "Remove ads" on. Returns the coin gift paid now (only the first time).
+func set_premium(on: bool) -> int:
+	premium = on
+	var gift := 0
+	if on and not premium_gift_given:
+		premium_gift_given = true
+		gift = PREMIUM_GIFT
+		add_coins(gift)
+	save_game()
+	return gift
+
+
+func free_coins_left() -> int:
+	return FREE_COINS_PER_DAY - (free_coins_claimed if free_coins_day == day else 0)
+
+
+func claim_free_coins() -> bool:
+	if free_coins_left() <= 0:
+		return false
+	if free_coins_day != day:
+		free_coins_day = day
+		free_coins_claimed = 0
+	free_coins_claimed += 1
+	add_coins(FREE_COINS)
+	save_game()
+	return true
+
+
 # -- persistence ---------------------------------------------------------------
 
 func save_game() -> void:
@@ -706,6 +752,10 @@ func save_game() -> void:
 		"layout": layout,
 		"sound_on": sound_on,
 		"music_on": music_on,
+		"premium": premium,
+		"premium_gift_given": premium_gift_given,
+		"free_coins_day": free_coins_day,
+		"free_coins_claimed": free_coins_claimed,
 	}
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
@@ -766,6 +816,10 @@ func load_game() -> void:
 				stickers.append(str(id))
 	sound_on = bool(parsed.get("sound_on", true))
 	music_on = bool(parsed.get("music_on", true))
+	premium = bool(parsed.get("premium", false))
+	premium_gift_given = bool(parsed.get("premium_gift_given", false))
+	free_coins_day = int(parsed.get("free_coins_day", 0))
+	free_coins_claimed = int(parsed.get("free_coins_claimed", 0))
 	upgrades = {}
 	var saved = parsed.get("upgrades", {})
 	if typeof(saved) == TYPE_DICTIONARY:
@@ -792,6 +846,8 @@ func reset() -> void:
 	equipped = {"wall": "peach", "floor": "honey", "outfit": "classic"}
 	decor_owned = {}
 	layout = {}
+	free_coins_day = 0
+	free_coins_claimed = 0
 	coins_changed.emit(coins)
 	upgrades_changed.emit()
 	save_game()

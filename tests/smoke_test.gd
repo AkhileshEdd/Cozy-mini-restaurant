@@ -179,6 +179,66 @@ func _ready() -> void:
 	_check(GameState.weather() == "snow" and GameState.dish_price("latte") == 10, "winter: snow and pricier lattes")
 	GameState.season_override = ""
 
+	# -- ads and "Remove ads" (mock backend) ----------------------------------------
+	_check(Monetization.backend == Monetization.Backend.MOCK, "debug builds use the mock ad backend")
+	GameState.premium = false
+	GameState.premium_gift_given = false
+	GameState.free_coins_day = 0
+	GameState.free_coins_claimed = 0
+	var cooled := Time.get_ticks_msec() - Monetization.AD_COOLDOWN_MSEC - 1
+	Monetization._last_fullscreen_msec = cooled
+	GameState.day = 2
+	_check(not Monetization.interstitial_due(), "no interstitials in the first days")
+	GameState.day = 5
+	_check(Monetization.interstitial_due(), "interstitial due on later days")
+	await _ads_shots()
+	Monetization.instant = true
+	Monetization._last_fullscreen_msec = cooled
+	await Monetization.maybe_show_interstitial()
+	_check(not Monetization.interstitial_due(), "interstitials are spaced out")
+	GameState.day = 7
+	_check(not Monetization.interstitial_due(), "cooldown between full-screen ads")
+	Monetization._last_fullscreen_msec = cooled
+	_check(Monetization.interstitial_due(), "interstitial due again two days later")
+
+	main.stats["earned"] = 40
+	main._coins_doubled = false
+	var before_double := GameState.coins
+	await main._double_coins()
+	await main._double_coins()
+	_check(GameState.coins == before_double + 40, "rewarded ad doubles today's coins once (%d -> %d)" % [before_double, GameState.coins])
+	var before_free := GameState.coins
+	for i in GameState.FREE_COINS_PER_DAY + 1:
+		await main._free_coins()
+	_check(GameState.coins == before_free + GameState.FREE_COINS * GameState.FREE_COINS_PER_DAY and GameState.free_coins_left() == 0, "free coins: %d ads a day" % GameState.FREE_COINS_PER_DAY)
+	GameState.day += 1
+	_check(GameState.free_coins_left() == GameState.FREE_COINS_PER_DAY, "free coins come back the next day")
+
+	_check(not GameState.buy_style("outfit", "golden"), "golden outfit needs Remove ads")
+	var before_premium := GameState.coins
+	Monetization.buy_remove_ads()
+	await get_tree().process_frame
+	_check(GameState.premium and GameState.coins == before_premium + GameState.PREMIUM_GIFT, "Remove ads: premium on, +%d coins" % GameState.PREMIUM_GIFT)
+	Monetization._last_fullscreen_msec = cooled
+	_check(not Monetization.interstitial_due(), "no interstitials after Remove ads")
+	_check(Monetization.rewarded_ready(), "rewarded ads stay available (opt-in)")
+	_check(GameState.buy_style("outfit", "golden"), "golden outfit unlocked")
+	_check(GameState.set_premium(true) == 0, "premium gift is paid only once")
+	GameState.save_game()
+	GameState.premium = false
+	GameState.load_game()
+	_check(GameState.premium, "premium survives save/load")
+	GameState.reset()
+	_check(GameState.premium, "premium survives Start over")
+	if shots_dir != "":
+		main.hud._set_paused(true)
+		await get_tree().create_timer(0.4).timeout
+		await _shot("95_premium_pause")
+		main.hud._set_paused(false)
+	GameState.premium = false
+	GameState.premium_gift_given = false
+	Monetization.instant = false
+
 	GameState.reset()
 	if failures.is_empty():
 		print("SMOKE OK: served=%d coins_after_day=%d" % [main.stats.get("served", 0), main.stats.get("earned", 0)])
@@ -187,6 +247,30 @@ func _ready() -> void:
 		for f in failures:
 			printerr("FAIL: ", f)
 		get_tree().quit(1)
+
+
+## Screenshots of the ad and store UI (mock backend, real UI).
+func _ads_shots() -> void:
+	if shots_dir == "" or DisplayServer.get_name() == "headless":
+		return
+	main.hud.show_results({"day": 4, "stars": 4.5, "served": 12, "earned": 164, "grumpy": 0, "xp": 60})
+	await get_tree().create_timer(0.5).timeout
+	await _shot("90_results_ads")
+	Monetization.show_rewarded()
+	await get_tree().create_timer(0.3).timeout
+	await _shot("91_mock_ad")
+	Monetization._mock_closed.emit(false)
+	await get_tree().process_frame
+	Monetization.buy_remove_ads()
+	await get_tree().create_timer(0.3).timeout
+	await _shot("92_mock_store")
+	Monetization._mock_closed.emit(false)
+	await get_tree().process_frame
+	main.hud._modal(main.hud._results, false)
+	main.hud._set_paused(true)
+	await get_tree().create_timer(0.4).timeout
+	await _shot("93_pause_store")
+	main.hud._set_paused(false)
 
 
 ## A tiny player: serve what we carry, pick up what's ready, cook what's wanted, tidy tables.

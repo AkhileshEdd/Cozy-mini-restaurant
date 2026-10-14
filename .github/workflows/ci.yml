@@ -85,13 +85,12 @@ jobs:
         uses: actions/deploy-pages@v4
 
   android:
-    name: Android debug APK
+    name: Android build
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # Built with the runner's Android SDK; kept non-blocking so a runner image
-    # change never hides the smoke test result.
-    continue-on-error: true
+    timeout-minutes: 40
+    env:
+      HAS_RELEASE_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -99,6 +98,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the CozyServices plugin (ads, consent, billing)
+        working-directory: android_plugin
+        run: ./gradlew --no-daemon copyAarToAddon
 
       - name: Install Godot and Android export templates
         run: |
@@ -108,28 +113,64 @@ jobs:
           curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           mkdir -p "$dest"
-          unzip -q -j templates.tpz templates/version.txt templates/android_debug.apk templates/android_release.apk -d "$dest"
+          unzip -q -j templates.tpz templates/version.txt templates/android_source.zip -d "$dest"
+
+      - name: Point the editor at the Android SDK
+        run: |
+          ./godot --headless --path . --import
+          settings=$(ls "$HOME"/.config/godot/editor_settings-*.tres | head -n 1)
+          sed -i '/^export\/android\/android_sdk_path/d; /^export\/android\/java_sdk_path/d' "$settings"
+          printf 'export/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" >> "$settings"
 
       - name: Debug keystore
         run: |
           keytool -genkeypair -v -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -keypass android \
             -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-      - name: Export APK
+      - name: Export debug APK (Gradle build with the plugin)
         env:
           GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ runner.temp }}/debug.keystore
           GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
           GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
-          ./godot --headless --path . --import
-          settings=$(ls "$HOME"/.config/godot/editor_settings-*.tres | head -n 1)
-          sed -i '/^export\/android\/android_sdk_path/d; /^export\/android\/java_sdk_path/d' "$settings"
-          printf 'export/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" >> "$settings"
           mkdir -p build/android
-          ./godot --headless --path . --export-debug "Android" build/android/CozyMiniRestaurant-debug.apk
+          ./godot --headless --path . --install-android-build-template --export-debug "Android" build/android/CozyMiniRestaurant-debug.apk
           test -f build/android/CozyMiniRestaurant-debug.apk
+
+      - name: Check the plugin made it into the APK
+        run: |
+          apk=build/android/CozyMiniRestaurant-debug.apk
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n 1)aapt2
+          "$aapt2" dump xmltree --file AndroidManifest.xml "$apk" > manifest.txt
+          grep -q 'org.godotengine.plugin.v2.CozyServices' manifest.txt
+          grep -q 'com.google.android.gms.ads.APPLICATION_ID' manifest.txt
+          grep -q 'com.android.vending.BILLING' manifest.txt
+          unzip -p "$apk" 'classes*.dex' | grep -a -q 'com/cozyminirestaurant/services/CozyServicesPlugin'
+          echo "CozyServices plugin, AdMob app id and billing permission are in the APK"
 
       - uses: actions/upload-artifact@v4
         with:
           name: cozy-mini-restaurant-android-debug
           path: build/android/*.apk
+
+      # Signed bundle for Google Play, built when the repository has the
+      # ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_ALIAS / ANDROID_KEYSTORE_PASSWORD
+      # secrets (see README).
+      - name: Export Play Store bundle (AAB)
+        if: env.HAS_RELEASE_KEY == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ runner.temp }}/release.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          ./godot --headless --path . --export-release "Android Play Store" build/android/CozyMiniRestaurant.aab
+          test -f build/android/CozyMiniRestaurant.aab
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_RELEASE_KEY == 'true'
+        with:
+          name: cozy-mini-restaurant-play-bundle
+          path: build/android/*.aab

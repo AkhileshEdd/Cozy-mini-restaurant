@@ -12,3 +12,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Android plugin build outputs (the .aar is built by Gradle, see README)
+/android_plugin/.gradle/
+/addons/cozy_services/bin/

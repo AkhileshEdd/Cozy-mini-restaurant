@@ -15,6 +15,8 @@ signal deco_rotate
 signal deco_store
 signal style_pressed(cat: String, id: String)
 signal decor_buy_pressed(id: String)
+signal double_coins_pressed
+signal free_coins_pressed
 
 const TIPS := [
 	"Tap a station to start cooking. Tap it again when the dish is ready.",
@@ -59,6 +61,14 @@ var _shop_tabs_box: HBoxContainer
 var _book_tab := "regulars"
 var _top_margin: MarginContainer
 var _bottom_margin: MarginContainer
+var _double_btn: Button
+var _double_amount := 0
+var _doubled := false
+var _store_row: HBoxContainer
+var _remove_ads_btn: Button
+var _restore_btn: Button
+var _privacy_btn: Button
+var _thanks_label: Label
 
 
 func _ready() -> void:
@@ -86,6 +96,9 @@ func _ready() -> void:
 	_shown_coins = GameState.coins
 	set_coins(GameState.coins, false)
 	GameState.coins_changed.connect(func(c: int): _refresh_shop_coins(c))
+	Monetization.status_changed.connect(_on_store_status)
+	Monetization.purchase_finished.connect(func(ok: bool, message: String):
+		toast(message, CozyTheme.MINT_INK if ok else CozyTheme.TOMATO))
 
 
 # -- building ----------------------------------------------------------------
@@ -306,6 +319,34 @@ func _build_pause() -> void:
 		Audio.apply_settings()
 		_refresh_pause())
 	col.add_child(_music_btn)
+	_store_row = _hbox(12)
+	_remove_ads_btn = Button.new()
+	_remove_ads_btn.theme_type_variation = "BuyButton"
+	_remove_ads_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_remove_ads_btn.pressed.connect(func():
+		Audio.play("tap")
+		Monetization.buy_remove_ads())
+	_store_row.add_child(_remove_ads_btn)
+	_restore_btn = Button.new()
+	_restore_btn.theme_type_variation = "SoftButton"
+	_restore_btn.text = "Restore"
+	_restore_btn.pressed.connect(func():
+		Audio.play("tap")
+		Monetization.restore_purchases())
+	_store_row.add_child(_restore_btn)
+	col.add_child(_store_row)
+	_thanks_label = _label("Ad-free. Thank you for supporting the café!", 22, "Body")
+	_thanks_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_thanks_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_thanks_label.custom_minimum_size = Vector2(440, 0)
+	col.add_child(_thanks_label)
+	_privacy_btn = Button.new()
+	_privacy_btn.theme_type_variation = "SoftButton"
+	_privacy_btn.text = "Privacy options"
+	_privacy_btn.pressed.connect(func():
+		Audio.play("tap")
+		Monetization.show_privacy_options())
+	col.add_child(_privacy_btn)
 	_reset_btn = Button.new()
 	_reset_btn.theme_type_variation = "SoftButton"
 	_reset_btn.pressed.connect(_on_reset_pressed)
@@ -395,6 +436,7 @@ func _next_toast() -> void:
 		return
 	_toast_busy = true
 	var item: Array = _toast_queue.pop_front()
+	_toast.move_to_front()
 	_toast.text = item[0]
 	_toast.add_theme_color_override("font_color", item[1])
 	var t := create_tween()
@@ -587,6 +629,19 @@ func show_results(summary: Dictionary) -> void:
 		l.custom_minimum_size = Vector2(560, 0)
 		l.add_theme_color_override("font_color", Color("b4533f"))
 		head_col.add_child(l)
+	_double_btn = null
+	_doubled = false
+	_double_amount = int(summary["earned"])
+	if Monetization.has_ads() and _double_amount > 0:
+		_double_btn = Button.new()
+		_double_btn.theme_type_variation = "BuyButton"
+		_double_btn.custom_minimum_size = Vector2(0, 76)
+		_double_btn.add_theme_font_size_override("font_size", 26)
+		_double_btn.pressed.connect(func():
+			Audio.play("tap")
+			double_coins_pressed.emit())
+		head_col.add_child(_double_btn)
+		_refresh_double()
 	col.add_child(head)
 
 	var shop_head := _hbox(10)
@@ -630,6 +685,32 @@ func show_results(summary: Dictionary) -> void:
 	col.add_child(next)
 	col.add_child(_spacer(_bottom_margin.get_theme_constant("margin_bottom")))
 	_modal(_results, true)
+
+
+func _refresh_double() -> void:
+	if _double_btn == null or not is_instance_valid(_double_btn):
+		return
+	if _doubled:
+		_double_btn.text = "Coins doubled! +%d" % _double_amount
+		_double_btn.disabled = true
+	elif not Monetization.rewarded_ready():
+		_double_btn.text = "Ad loading..."
+		_double_btn.disabled = true
+	else:
+		_double_btn.text = "Watch an ad: double coins +%d" % _double_amount
+		_double_btn.disabled = false
+
+
+## Today's coins were doubled by a rewarded ad.
+func mark_doubled() -> void:
+	_doubled = true
+	_refresh_double()
+
+
+func _on_store_status() -> void:
+	_refresh_double()
+	_refresh_pause()
+	refresh_shop()
 
 
 ## "Café level 2 · Cozy Corner" with an XP bar underneath.
@@ -687,6 +768,13 @@ func _fill_shop() -> void:
 	if _shop_tab == "style":
 		_fill_style_shop()
 		return
+	if Monetization.has_ads() or Monetization.has_store():
+		_shop_list.add_child(_section("Extras"))
+		if Monetization.has_ads():
+			_shop_list.add_child(_free_coins_row())
+		if Monetization.has_store():
+			_shop_list.add_child(_remove_ads_row())
+		_shop_list.add_child(_section("Upgrades"))
 	for u in GameState.UPGRADES:
 		var id: String = u["id"]
 		var cost := GameState.next_cost(id)
@@ -739,12 +827,58 @@ func _fill_shop() -> void:
 		_shop_list.add_child(row)
 
 
+func _free_coins_row() -> Control:
+	var icon_bg := PanelContainer.new()
+	icon_bg.add_theme_stylebox_override("panel", CozyTheme.box(Color("fff3cc"), 22, 2))
+	icon_bg.custom_minimum_size = Vector2(84, 84)
+	icon_bg.add_child(_icon(IconFactory.get_icon("coin"), 78))
+	var left := GameState.free_coins_left()
+	var parts := _shop_row(icon_bg, "Free coins", "Watch a short ad for +%d coins. %d left today." % [GameState.FREE_COINS, left])
+	var h: HBoxContainer = parts[1]
+	if left <= 0:
+		h.add_child(_row_label("Next day", CozyTheme.INK_SOFT))
+	elif not Monetization.rewarded_ready():
+		h.add_child(_row_label("Loading", CozyTheme.INK_SOFT))
+	else:
+		h.add_child(_row_button("Watch", "BuyButton", true, func():
+			Audio.play("tap")
+			free_coins_pressed.emit()))
+	return parts[0]
+
+
+func _remove_ads_row() -> Control:
+	var badge := PanelContainer.new()
+	badge.add_theme_stylebox_override("panel", CozyTheme.box(Color("f6c443"), 22, 6))
+	badge.custom_minimum_size = Vector2(84, 84)
+	var no_ads := _label("NO\nADS", 22)
+	no_ads.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	no_ads.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	no_ads.add_theme_color_override("font_color", Color("6b4a1e"))
+	badge.add_child(no_ads)
+	var desc := "No ads between days, +%d coins and the Golden chef outfit." % GameState.PREMIUM_GIFT
+	if GameState.premium:
+		desc = "Thank you for supporting the café!"
+	var parts := _shop_row(badge, "Remove ads", desc)
+	var h: HBoxContainer = parts[1]
+	if GameState.premium:
+		h.add_child(_row_label("Owned", CozyTheme.MINT_INK))
+	elif Monetization.purchase_pending:
+		h.add_child(_row_label("Pending", CozyTheme.INK_SOFT))
+	else:
+		h.add_child(_row_button(Monetization.price_text(), "BuyButton", true, func():
+			Audio.play("tap")
+			Monetization.buy_remove_ads()))
+	return parts[0]
+
+
 # -- style shop ------------------------------------------------------------------
 
 func _fill_style_shop() -> void:
 	for cat in ["wall", "floor", "outfit"]:
 		_shop_list.add_child(_section(GameState.STYLE_TITLES[cat]))
 		for id in GameState.STYLES[cat]:
+			if GameState.STYLES[cat][id].has("req_premium") and not (GameState.premium or Monetization.has_store()):
+				continue
 			_shop_list.add_child(_style_row(cat, id))
 	_shop_list.add_child(_section("Décor · charm %d, +%d%% tips" % [GameState.charm(), roundi(GameState.charm_bonus() * 100)]))
 	for id in GameState.DECOR:
@@ -822,6 +956,8 @@ func _style_row(cat: String, id: String) -> Control:
 	var desc := "Wallpaper and curtains" if cat == "wall" else ("Planks and kitchen tiles" if cat == "floor" else "Hat, apron and scarf for Chef Mochi")
 	if def.has("req_friend"):
 		desc = "A gift from %s at %d hearts" % [GameState.guest(def["req_friend"][0])["name"], int(def["req_friend"][1])]
+	elif def.has("req_premium"):
+		desc = "A thank-you for removing ads"
 	var parts := _shop_row(_swatch(swatch_colors), def["name"], desc)
 	var h: HBoxContainer = parts[1]
 	var lock := GameState.style_lock(cat, id)
@@ -1138,6 +1274,14 @@ func _refresh_pause() -> void:
 	_sound_btn.text = "Sound: %s" % ("On" if GameState.sound_on else "Off")
 	_music_btn.text = "Music: %s" % ("On" if GameState.music_on else "Off")
 	_reset_btn.text = "Tap again to start over" if _reset_armed else "Start over"
+	var store := Monetization.has_store()
+	_store_row.visible = store and not GameState.premium
+	_remove_ads_btn.text = "Payment pending" if Monetization.purchase_pending else "Remove ads · %s" % Monetization.price_text()
+	_remove_ads_btn.disabled = Monetization.purchase_pending
+	_thanks_label.visible = GameState.premium
+	_privacy_btn.visible = Monetization.privacy_options_required()
+	if _pause_menu.visible:
+		_center(_pause_menu)
 
 
 func _on_reset_pressed() -> void:

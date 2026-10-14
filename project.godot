@@ -24,6 +24,15 @@ config/quit_on_go_back=false
 
 GameState="*res://scripts/autoload/game_state.gd"
 Audio="*res://scripts/autoload/audio.gd"
+Monetization="*res://scripts/autoload/monetization.gd"
+
+[cozy_services]
+
+admob/android_app_id="ca-app-pub-3940256099942544~3347511713"
+admob/android_interstitial_unit="ca-app-pub-3940256099942544/1033173712"
+admob/android_rewarded_unit="ca-app-pub-3940256099942544/5224354917"
+admob/child_directed=false
+store/remove_ads_product_id="remove_ads"
 
 [display]
 
@@ -34,6 +43,10 @@ window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/cozy_services/plugin.cfg")
 
 [physics]
 

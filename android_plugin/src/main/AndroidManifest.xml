@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application>
+        <!-- Registers the plugin with Godot (Android plugin v2). The AdMob
+             APPLICATION_ID is added by the editor export plugin from the
+             cozy_services/admob/android_app_id project setting. -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.CozyServices"
+            android:value="com.cozyminirestaurant.services.CozyServicesPlugin" />
+    </application>
+
+</manifest>

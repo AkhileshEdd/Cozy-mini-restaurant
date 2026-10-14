@@ -51,6 +51,7 @@ var _hands_full_warned := false
 var _hour_hand: Node3D
 var _minute_hand: Node3D
 var _string_lights: Node3D
+var _coins_doubled := false
 
 
 func _ready() -> void:
@@ -94,7 +95,10 @@ func _ready() -> void:
 		_hands_full_warned = false)
 
 	hud.open_pressed.connect(_open_day)
-	hud.next_day_pressed.connect(func(): _prepare_day(true))
+	hud.next_day_pressed.connect(_next_day)
+	hud.double_coins_pressed.connect(_double_coins)
+	hud.free_coins_pressed.connect(_free_coins)
+	Monetization.premium_changed.connect(_on_premium)
 	hud.buy_pressed.connect(_buy)
 	hud.pause_changed.connect(func(p: bool): get_tree().paused = p)
 	hud.book_changed.connect(func(open: bool):
@@ -314,6 +318,7 @@ func _open_day() -> void:
 
 func _end_day() -> void:
 	phase = Phase.RESULTS
+	_coins_doubled = false
 	var leftover := 0
 	for s in seats:
 		leftover += s.collect()
@@ -635,6 +640,49 @@ func _hint() -> String:
 	if not waiting.is_empty():
 		return "Cooking... Tap the station again to grab the dish."
 	return "Guests are on their way..."
+
+
+# -- ads and premium -------------------------------------------------------------------
+
+## "Open day N" from the results screen: maybe a short ad first.
+func _next_day() -> void:
+	await Monetization.maybe_show_interstitial()
+	_prepare_day(true)
+
+
+## Rewarded ad on the results screen: today's coins again.
+func _double_coins() -> void:
+	var amount: int = stats.get("earned", 0)
+	if _coins_doubled or amount <= 0:
+		return
+	if not await Monetization.show_rewarded():
+		return
+	_coins_doubled = true
+	GameState.add_coins(amount)
+	GameState.save_game()
+	hud.set_coins(GameState.coins)
+	hud.mark_doubled()
+	hud.refresh_shop()
+	Audio.play("buy")
+
+
+## Rewarded ad in the shop: a few free coins, a few times per day.
+func _free_coins() -> void:
+	if GameState.free_coins_left() <= 0:
+		return
+	if await Monetization.show_rewarded() and GameState.claim_free_coins():
+		hud.set_coins(GameState.coins)
+		hud.toast("+%d coins!" % GameState.FREE_COINS, CozyTheme.MINT_INK)
+		Audio.play("buy")
+	hud.refresh_shop()
+
+
+func _on_premium() -> void:
+	hud.set_coins(GameState.coins)
+	hud.refresh_shop()
+	Audio.play("sparkle")
+	if chef:
+		FX.sparkles(actors, chef.global_position + Vector3(0, 1.0, 0), 30)
 
 
 # -- shop ----------------------------------------------------------------------------
