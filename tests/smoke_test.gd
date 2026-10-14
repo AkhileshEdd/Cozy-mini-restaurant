@@ -253,8 +253,9 @@ func _ready() -> void:
 func _ads_shots() -> void:
 	if shots_dir == "" or DisplayServer.get_name() == "headless":
 		return
+	main.hud.flush_toasts()
 	main.hud.show_results({"day": 4, "stars": 4.5, "served": 12, "earned": 164, "grumpy": 0, "xp": 60})
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().create_timer(2.0).timeout  # let the last toast fade
 	await _shot("90_results_ads")
 	Monetization.show_rewarded()
 	await get_tree().create_timer(0.3).timeout
