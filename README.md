@@ -114,6 +114,14 @@ Happy guests earn XP equal to their stars (combos +2, the critic counts double).
 
 The shop also sells extra tables (2 more seats each), Speedy Paws, Quick Kitchen, a Big Tray, and décor that shows up in the café. Cozy plants make guests more patient, a fluffy rug brings them more often, and fairy lights raise tips. Locked stations and tables stay in the café as see-through previews. Later days are longer and busier, and progress is saved automatically.
 
+### Welcome back
+
+The café keeps selling takeaway while you're away. Reopen the game after 10 minutes or more and a "Welcome back!" card pays coins for the time away, up to 8 hours. The hourly rate grows with your menu, tables, hired helpers and décor charm. A rewarded ad can double it.
+
+### Cloud save
+
+Progress saves automatically, and on Android it is included in the phone's backup to the player's Google account. Reinstalling the game or moving to a new phone brings the café back. The Remove ads purchase is also restored from Google Play. Saves are written to a temporary file and swapped in, with the previous save kept as a backup, so a crash mid-save can't lose progress.
+
 ### Ads and Remove ads
 
 The game is free with ads, and a one-time **Remove ads** purchase turns them off.
@@ -133,6 +141,15 @@ Debug builds on desktop and in the editor use a stand-in **test ad** and **test 
 2. Open `project.godot` in the Godot project manager and press **F5**.
 
 On desktop it opens as a 405×720 portrait window, and the mouse works like a finger.
+
+## Trying it on your phone
+
+Every CI run builds a debug APK with Google's test ads:
+
+1. Open the latest run under **Actions → CI** and download the `cozy-mini-restaurant-android-debug` artifact. Unzip it.
+2. Copy `CozyMiniRestaurant-debug.apk` to the phone and open it, allowing installs from that app when Android asks. Or, with USB debugging on: `adb install -r CozyMiniRestaurant-debug.apk`.
+
+Purchases only work in builds installed from Google Play (see [Publishing](#publishing-on-google-play)).
 
 ## Building for phones
 
@@ -190,6 +207,16 @@ Notes:
 - Purchases are checked on the device: the plugin acknowledges them with Google Play and restores them at start-up. For stronger protection against fraud, verify purchase tokens on a server.
 - iOS would need its own plugin (Google Mobile Ads for iOS and StoreKit). Until then, iOS uses the "none" backend: no ads and no purchase.
 
+## Publishing on Google Play
+
+[`docs/store/RELEASE.md`](docs/store/RELEASE.md) is the step-by-step checklist: the upload key and CI-built `.aab`, real AdMob ids, Play Console setup, the `remove_ads` product, content rating, Data safety answers and hosting the privacy policy. The same folder has everything the store listing needs:
+
+- `listing.md`: name, short and full description
+- `icon_512.png`, `feature_graphic.png` and `screenshots/phone_*.png` (1080 × 1920)
+- `privacy-policy.html`: fill in your support email before publishing
+
+![Store screenshots](docs/store/screenshots/preview.png)
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push:
@@ -207,7 +234,7 @@ Notes:
   - `ANDROID_KEYSTORE_PASSWORD`
 
   It is uploaded as `cozy-mini-restaurant-play-bundle`.
-- **GitHub Pages (optional):** to publish the Web build on every push to `main`, set **Settings → Pages → Source** to "GitHub Actions" and add a repository variable `PAGES_ENABLED` = `true`.
+- **GitHub Pages (optional):** to publish the Web build and the privacy policy (`privacy.html`) on every push to the default branch, set **Settings → Pages → Source** to "GitHub Actions" and add a repository variable `PAGES_ENABLED` = `true`.
 
 Run the smoke test locally:
 
@@ -292,4 +319,4 @@ Balance lives in `scripts/autoload/game_state.gd`: `DISHES`, `UPGRADES` (costs a
 - **No shadow maps:** in the Compatibility renderer, lights that cast shadows are drawn in an extra pass that adds colour in sRGB space, which washes out the pastel palette. The game uses soft blob shadows instead, which are also cheaper on phones.
 - **Performance:** a fully upgraded café with eight guests is about 120k triangles and about 400 draw calls. That is comfortable for mid-range phones.
 - **Touch:** taps use screen-space picking with generous, finger-sized radii rather than physics raycasts. This keeps small targets like coins easy to hit.
-- **Save data:** progress is stored in `user://cozy_save.json`. You can start over from the pause menu. "Start over" keeps Remove ads.
+- **Save data:** progress is stored in `user://cozy_save.json`, with the previous save in `cozy_save.bak.json`. You can start over from the pause menu. "Start over" keeps Remove ads. Android backup rules live in `android_plugin/src/main/res/xml/`.

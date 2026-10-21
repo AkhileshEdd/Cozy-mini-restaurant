@@ -235,6 +235,48 @@ func _ready() -> void:
 		await get_tree().create_timer(0.4).timeout
 		await _shot("95_premium_pause")
 		main.hud._set_paused(false)
+
+	# -- step 5: idle earnings and safe saves --------------------------------------
+	var epoch := 1_000_000
+	GameState.idle_pending = {}
+	GameState.last_seen = epoch
+	GameState.check_idle(epoch + 120)
+	_check(GameState.idle_pending.is_empty(), "two minutes away pays nothing")
+	GameState.last_seen = epoch
+	GameState.check_idle(epoch + 3 * 3600)
+	var hourly := GameState.idle_rate()
+	_check(hourly > 0 and int(GameState.idle_pending.get("coins", 0)) == roundi(hourly * 3.0), "three hours away pays 3x the hourly rate (%d/h)" % hourly)
+	GameState.idle_pending = {}
+	GameState.last_seen = epoch
+	GameState.check_idle(epoch + 48 * 3600)
+	_check(int(GameState.idle_pending.get("seconds", 0)) == GameState.IDLE_MAX_SECONDS, "idle earnings stop at 8 hours")
+	GameState.idle_pending = {}
+	GameState.last_seen = epoch
+	GameState.check_idle(epoch - 3600)
+	_check(GameState.idle_pending.is_empty(), "a clock set backwards pays nothing")
+	GameState.idle_pending = {"coins": 90, "seconds": 7200}
+	main.hud.show_welcome(GameState.idle_pending)
+	await get_tree().create_timer(0.4).timeout
+	_check(main.hud.is_welcome_open(), "welcome-back card shows")
+	await _shot("96_welcome_back")
+	var before_idle := GameState.coins
+	main.hud._close_welcome(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check(GameState.coins == before_idle + 180 and GameState.idle_pending.is_empty(), "rewarded ad doubles idle coins (%d -> %d)" % [before_idle, GameState.coins])
+	_check(not main.hud.is_welcome_open(), "welcome-back card closes")
+
+	GameState.save_game()
+	GameState.save_game()
+	var good_coins := GameState.coins
+	var broken := FileAccess.open(GameState.SAVE_PATH, FileAccess.WRITE)
+	broken.store_string("{\"coins\": 12")
+	broken.close()
+	GameState.coins = 0
+	GameState.load_game()
+	_check(GameState.coins == good_coins, "a damaged save falls back to the backup")
+	_check(not FileAccess.file_exists(GameState.SAVE_PATH + ".tmp"), "no temp file left behind")
+
 	GameState.premium = false
 	GameState.premium_gift_given = false
 	Monetization.instant = false

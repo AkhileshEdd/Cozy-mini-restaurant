@@ -98,6 +98,7 @@ func _ready() -> void:
 	hud.next_day_pressed.connect(_next_day)
 	hud.double_coins_pressed.connect(_double_coins)
 	hud.free_coins_pressed.connect(_free_coins)
+	hud.idle_collect_pressed.connect(_collect_idle)
 	Monetization.premium_changed.connect(_on_premium)
 	hud.buy_pressed.connect(_buy)
 	hud.pause_changed.connect(func(p: bool): get_tree().paused = p)
@@ -134,6 +135,7 @@ func _ready() -> void:
 	_apply_season()
 	_apply_upgrades(false)
 	_prepare_day()
+	_check_idle()
 
 
 func _add_static_blobs() -> void:
@@ -265,6 +267,9 @@ func _notification(what: int) -> void:
 		if phase == Phase.OPEN or phase == Phase.CLOSING:
 			hud.open_pause()
 		GameState.save_game()
+	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		if phase != Phase.LOADING and not Monetization.busy:
+			_check_idle()
 
 
 func _fit_camera() -> void:
@@ -672,8 +677,28 @@ func _free_coins() -> void:
 		return
 	if await Monetization.show_rewarded() and GameState.claim_free_coins():
 		hud.set_coins(GameState.coins)
-		hud.toast("+%d coins!" % GameState.FREE_COINS, CozyTheme.MINT_INK)
+		hud.toast("+%d coins!" % GameState.FREE_COINS, CozyTheme.MINT_INK, true)
 		Audio.play("buy")
+	hud.refresh_shop()
+
+
+## Shows the welcome-back card if time away earned something.
+func _check_idle() -> void:
+	GameState.check_idle()
+	if not GameState.idle_pending.is_empty():
+		hud.show_welcome(GameState.idle_pending)
+
+
+func _collect_idle(double: bool) -> void:
+	var multiplier := 1
+	if double and await Monetization.show_rewarded():
+		multiplier = 2
+	var amount := GameState.claim_idle(multiplier)
+	if amount <= 0:
+		return
+	hud.set_coins(GameState.coins)
+	hud.toast("+%d coins!" % amount, CozyTheme.MINT_INK, true)
+	Audio.play("buy")
 	hud.refresh_shop()
 
 

@@ -57,6 +57,7 @@ jobs:
           mkdir -p build/web
           ./godot --headless --path . --export-release "Web" build/web/index.html
           test -f build/web/index.pck
+          cp docs/store/privacy-policy.html build/web/privacy.html
 
       - uses: actions/upload-artifact@v4
         with:
@@ -64,14 +65,14 @@ jobs:
           path: build/web
 
       - name: Package for GitHub Pages
-        if: github.ref == 'refs/heads/main' && vars.PAGES_ENABLED == 'true'
+        if: github.ref_name == github.event.repository.default_branch && vars.PAGES_ENABLED == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
 
   pages:
     name: Deploy to GitHub Pages
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.PAGES_ENABLED == 'true'
+    if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.PAGES_ENABLED == 'true'
     needs: web
     runs-on: ubuntu-latest
     permissions:
@@ -145,8 +146,11 @@ jobs:
           grep -q 'org.godotengine.plugin.v2.CozyServices' manifest.txt
           grep -q 'com.google.android.gms.ads.APPLICATION_ID' manifest.txt
           grep -q 'com.android.vending.BILLING' manifest.txt
+          grep 'android:allowBackup' manifest.txt | grep -qE '=true|0xffffffff'
+          grep -q 'android:dataExtractionRules' manifest.txt
           unzip -p "$apk" 'classes*.dex' | grep -a -q 'com/cozyminirestaurant/services/CozyServicesPlugin'
-          echo "CozyServices plugin, AdMob app id and billing permission are in the APK"
+          grep -E 'targetSdkVersion|minSdkVersion' manifest.txt
+          echo "CozyServices plugin, AdMob app id, billing permission and cloud backup are in the APK"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -156,6 +160,10 @@ jobs:
       # Signed bundle for Google Play, built when the repository has the
       # ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_ALIAS / ANDROID_KEYSTORE_PASSWORD
       # secrets (see README).
+      - name: Play Store bundle needs the upload key
+        if: env.HAS_RELEASE_KEY != 'true'
+        run: echo "::notice::No ANDROID_KEYSTORE_* secrets, so no .aab this run. See docs/store/RELEASE.md."
+
       - name: Export Play Store bundle (AAB)
         if: env.HAS_RELEASE_KEY == 'true'
         env:

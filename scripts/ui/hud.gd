@@ -17,6 +17,8 @@ signal style_pressed(cat: String, id: String)
 signal decor_buy_pressed(id: String)
 signal double_coins_pressed
 signal free_coins_pressed
+## The welcome-back card was closed; `double` asks for a rewarded ad first.
+signal idle_collect_pressed(double: bool)
 
 const TIPS := [
 	"Tap a station to start cooking. Tap it again when the dish is ready.",
@@ -50,6 +52,8 @@ var _reset_armed := false
 var _shown_coins := 0
 var _toast_queue: Array = []
 var _toast_busy := false
+## The toast's place under the modal screens.
+var _toast_index := 0
 var _book: PanelContainer
 var _tray_panel: PanelContainer
 var _deco_panel: PanelContainer
@@ -69,6 +73,8 @@ var _remove_ads_btn: Button
 var _restore_btn: Button
 var _privacy_btn: Button
 var _thanks_label: Label
+var _welcome: PanelContainer
+var _welcome_hidden: Array[Control] = []
 
 
 func _ready() -> void:
@@ -91,6 +97,7 @@ func _ready() -> void:
 	_build_results()
 	_build_pause()
 	_build_book()
+	_welcome = _centered_card("Card", 560)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_shown_coins = GameState.coins
@@ -98,7 +105,7 @@ func _ready() -> void:
 	GameState.coins_changed.connect(func(c: int): _refresh_shop_coins(c))
 	Monetization.status_changed.connect(_on_store_status)
 	Monetization.purchase_finished.connect(func(ok: bool, message: String):
-		toast(message, CozyTheme.MINT_INK if ok else CozyTheme.TOMATO))
+		toast(message, CozyTheme.MINT_INK if ok else CozyTheme.TOMATO, true))
 
 
 # -- building ----------------------------------------------------------------
@@ -267,6 +274,7 @@ func _build_toast() -> void:
 	_toast.pivot_offset = Vector2(300, 30)
 	_toast.modulate.a = 0.0
 	root.add_child(_toast)
+	_toast_index = _toast.get_index()
 
 
 func _centered_card(variation := "Card", width := 600.0) -> PanelContainer:
@@ -417,11 +425,12 @@ func set_tray(dishes: Array, capacity: int) -> void:
 		_tray_box.add_child(slot)
 
 
-## Toasts queue up so several events in a row are all readable.
-func toast(text: String, color := CozyTheme.TOMATO) -> void:
+## Toasts queue up so several events in a row are all readable. Most sit
+## under the full-screen sheets; `on_top` ones (store results) show above.
+func toast(text: String, color := CozyTheme.TOMATO, on_top := false) -> void:
 	if _toast_queue.size() > 4:
 		return
-	_toast_queue.append([text, color])
+	_toast_queue.append([text, color, on_top])
 	if not _toast_busy:
 		_next_toast()
 
@@ -436,7 +445,10 @@ func _next_toast() -> void:
 		return
 	_toast_busy = true
 	var item: Array = _toast_queue.pop_front()
-	_toast.move_to_front()
+	if item[2]:
+		_toast.move_to_front()
+	else:
+		root.move_child(_toast, _toast_index)
 	_toast.text = item[0]
 	_toast.add_theme_color_override("font_color", item[1])
 	var t := create_tween()
@@ -488,7 +500,80 @@ func _modal(panel: Control, on: bool) -> void:
 
 
 func any_modal_open() -> bool:
-	return _day_card.visible or _results.visible or _pause_menu.visible or _book.visible
+	return _day_card.visible or _results.visible or _pause_menu.visible or _book.visible or _welcome.visible
+
+
+func is_welcome_open() -> bool:
+	return _welcome.visible
+
+
+## "Welcome back!" with the coins earned while away. Sits on top of whatever
+## screen was open and puts it back when closed.
+func show_welcome(idle: Dictionary) -> void:
+	for c in _welcome.get_children():
+		c.queue_free()
+	if not _welcome.visible:
+		_welcome_hidden.clear()
+		for panel in [_day_card, _results, _pause_menu, _book]:
+			if panel.visible:
+				panel.visible = false
+				_welcome_hidden.append(panel)
+	var col := _vbox(16)
+	_welcome.add_child(col)
+	var title := _label("Welcome back!", 52)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	var amount := _hbox(10)
+	amount.alignment = BoxContainer.ALIGNMENT_CENTER
+	amount.add_child(_icon(IconFactory.get_icon("coin"), 84))
+	amount.add_child(_label("+%d" % int(idle["coins"]), 64))
+	col.add_child(amount)
+	var body := _label("You were away %s. Regulars dropped by for takeaway while you were gone." % _duration(int(idle["seconds"])), 24, "Body")
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(480, 0)
+	col.add_child(body)
+	var buttons := _hbox(12)
+	col.add_child(buttons)
+	var collect := Button.new()
+	collect.text = "Collect"
+	collect.custom_minimum_size = Vector2(0, 88)
+	collect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	collect.pressed.connect(func(): _close_welcome(false))
+	if Monetization.has_ads() and Monetization.rewarded_ready():
+		collect.theme_type_variation = "SoftButton"
+		buttons.add_child(collect)
+		var double := Button.new()
+		double.theme_type_variation = "BuyButton"
+		double.text = "Ad: double it"
+		double.custom_minimum_size = Vector2(0, 88)
+		double.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		double.pressed.connect(func(): _close_welcome(true))
+		buttons.add_child(double)
+	else:
+		buttons.add_child(collect)
+	_modal(_welcome, true)
+	_center(_welcome)
+
+
+func _close_welcome(double: bool) -> void:
+	Audio.play("tap")
+	_welcome.visible = false
+	for panel in _welcome_hidden:
+		panel.visible = true
+	_welcome_hidden.clear()
+	_overlay.visible = any_modal_open()
+	idle_collect_pressed.emit(double)
+
+
+static func _duration(seconds: int) -> String:
+	var h := seconds / 3600
+	var m := (seconds % 3600) / 60
+	if h == 0:
+		return "%d min" % maxi(m, 1)
+	if m == 0:
+		return "%d h" % h
+	return "%d h %d min" % [h, m]
 
 
 func show_day_card(day: int, menu: Array[String]) -> void:

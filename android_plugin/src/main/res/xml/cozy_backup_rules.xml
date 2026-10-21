@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6-11 Auto Backup: the game's files (save data), not caches. -->
+<full-backup-content>
+    <include domain="file" path="." />
+    <exclude domain="file" path="shader_cache/" />
+</full-backup-content>

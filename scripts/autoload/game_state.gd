@@ -9,6 +9,8 @@ signal sticker_unlocked(id: String)
 signal style_changed
 
 const SAVE_PATH := "user://cozy_save.json"
+## The previous good save, used if the main file is ever unreadable.
+const BACKUP_PATH := "user://cozy_save.bak.json"
 const SAVE_VERSION := 1
 
 ## Every dish on the menu. `station` must match a Station's `station_id`.
@@ -144,6 +146,10 @@ const STYLES := {
 }
 ## "Remove ads" also gives this many coins, once.
 const PREMIUM_GIFT := 300
+## Idle earnings: time away pays takeaway coins, from 10 minutes up to 8 hours.
+const IDLE_MIN_SECONDS := 600
+const IDLE_MAX_SECONDS := 8 * 3600
+
 ## Rewarded "free coins" in the shop: coins per ad and ads per café day.
 const FREE_COINS := 60
 const FREE_COINS_PER_DAY := 3
@@ -200,6 +206,10 @@ var premium_gift_given := false
 ## Free-coin ads watched on `free_coins_day`.
 var free_coins_day := 0
 var free_coins_claimed := 0
+## Unix time of the last save, for idle earnings.
+var last_seen := 0
+## Idle earnings waiting to be collected: {"coins", "seconds"}.
+var idle_pending := {}
 
 
 func _ready() -> void:
@@ -698,6 +708,42 @@ func level_unlocks(lvl: int) -> Array[String]:
 	return out
 
 
+# -- idle earnings ------------------------------------------------------------------
+
+## Takeaway coins per hour while the player is away. Grows with the menu,
+## tables, hired helpers and décor charm.
+func idle_rate() -> int:
+	var menu_value := 0
+	for d in menu():
+		menu_value += int(DISHES[d]["price"])
+	var rate := menu_value * 0.5 + tables_unlocked() * 3.0 + (level("waiter") + level("busser")) * 10.0
+	return roundi(rate * (1.0 + charm_bonus()))
+
+
+## Works out what the time since `last_seen` paid. Call on start and resume.
+func check_idle(now := -1) -> void:
+	if now < 0:
+		now = int(Time.get_unix_time_from_system())
+	if last_seen <= 0 or now <= last_seen:
+		return
+	var away := mini(now - last_seen, IDLE_MAX_SECONDS)
+	last_seen = now
+	if away < IDLE_MIN_SECONDS:
+		return
+	var seconds: int = away + int(idle_pending.get("seconds", 0))
+	seconds = mini(seconds, IDLE_MAX_SECONDS)
+	idle_pending = {"seconds": seconds, "coins": maxi(1, roundi(idle_rate() * seconds / 3600.0))}
+
+
+func claim_idle(multiplier := 1) -> int:
+	var amount: int = int(idle_pending.get("coins", 0)) * multiplier
+	idle_pending = {}
+	if amount > 0:
+		add_coins(amount)
+		save_game()
+	return amount
+
+
 # -- premium and rewarded ads ---------------------------------------------------
 
 ## Turns "Remove ads" on. Returns the coin gift paid now (only the first time).
@@ -731,6 +777,7 @@ func claim_free_coins() -> bool:
 # -- persistence ---------------------------------------------------------------
 
 func save_game() -> void:
+	last_seen = int(Time.get_unix_time_from_system())
 	var data := {
 		"version": SAVE_VERSION,
 		"coins": coins,
@@ -756,17 +803,38 @@ func save_game() -> void:
 		"premium_gift_given": premium_gift_given,
 		"free_coins_day": free_coins_day,
 		"free_coins_claimed": free_coins_claimed,
+		"last_seen": last_seen,
 	}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(data))
+	# Write a temp file and swap it in, keeping the last good save as a
+	# backup, so a crash or a full disk mid-write never loses progress.
+	var tmp := SAVE_PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(data))
+	f.close()
+	var dir := DirAccess.open("user://")
+	if FileAccess.file_exists(SAVE_PATH):
+		dir.remove(BACKUP_PATH.get_file())
+		dir.rename(SAVE_PATH.get_file(), BACKUP_PATH.get_file())
+	dir.rename(tmp.get_file(), SAVE_PATH.get_file())
+
+
+func _read_save(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var json := JSON.new()
+	if json.parse(FileAccess.get_file_as_string(path)) != OK:
+		push_warning("Save file %s is damaged" % path)
+		return {}
+	return json.data if typeof(json.data) == TYPE_DICTIONARY else {}
 
 
 func load_game() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
-	if typeof(parsed) != TYPE_DICTIONARY:
+	var parsed := _read_save(SAVE_PATH)
+	if parsed.is_empty():
+		parsed = _read_save(BACKUP_PATH)
+	if parsed.is_empty():
 		return
 	coins = int(parsed.get("coins", 0))
 	day = maxi(1, int(parsed.get("day", 1)))
@@ -820,6 +888,7 @@ func load_game() -> void:
 	premium_gift_given = bool(parsed.get("premium_gift_given", false))
 	free_coins_day = int(parsed.get("free_coins_day", 0))
 	free_coins_claimed = int(parsed.get("free_coins_claimed", 0))
+	last_seen = int(parsed.get("last_seen", 0))
 	upgrades = {}
 	var saved = parsed.get("upgrades", {})
 	if typeof(saved) == TYPE_DICTIONARY:
@@ -848,6 +917,7 @@ func reset() -> void:
 	layout = {}
 	free_coins_day = 0
 	free_coins_claimed = 0
+	idle_pending = {}
 	coins_changed.emit(coins)
 	upgrades_changed.emit()
 	save_game()

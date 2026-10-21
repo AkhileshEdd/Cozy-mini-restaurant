@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: cloud backup to the player's Google account and
+     phone-to-phone transfer both carry the save file over. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="." />
+        <exclude domain="file" path="shader_cache/" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="." />
+        <exclude domain="file" path="shader_cache/" />
+    </device-transfer>
+</data-extraction-rules>
