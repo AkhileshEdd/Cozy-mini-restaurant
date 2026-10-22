@@ -217,6 +217,10 @@ Notes:
 
 ![Store screenshots](docs/store/screenshots/preview.png)
 
+## Video ad
+
+[`docs/marketing/`](docs/marketing/) has a 27-second vertical video ad, `cozy-mini-restaurant-ad.mp4` (1080 × 1920), cut from real gameplay with motion-graphics captions, the cast and an end card. The README there explains how to make it again after changes. It uses `tools/godot/ad_capture.tscn`, `tools/godot/ad_portraits.tscn` and `tools/ad_video.py`.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push:
